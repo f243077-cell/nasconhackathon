@@ -19,7 +19,7 @@
   {
    "club_id": "club-alpha-1",
    "tenant_id": "tenant-alpha",
-   "name": "Alpha Falcons",
+   "name": "Karachi Kings",
    "profile": {
     "venue": {
      "name": "Falcon Park",
@@ -65,7 +65,7 @@
   {
    "club_id": "club-alpha-2",
    "tenant_id": "tenant-alpha",
-   "name": "Alpha Hawks",
+   "name": "Lahore Lions",
    "profile": {
     "venue": {
      "name": "Hawk Ground",
@@ -497,7 +497,7 @@
    "product_id": "prod-jersey-001",
    "tenant_id": "tenant-alpha",
    "club_id": "club-alpha-1",
-   "name": "Alpha Falcons Home Jersey",
+   "name": "Karachi Kings Home Jersey",
    "type": "apparel",
    "image_url": "/static/jersey.png",
    "variants": [
@@ -579,13 +579,13 @@
     "squad_id": "club-alpha-1",
     "club_id": "club-alpha-1",
     "tenant_id": "tenant-alpha",
-    "name": "Alpha Falcons"
+    "name": "Karachi Kings"
    },
    {
     "squad_id": "club-alpha-2",
     "club_id": "club-alpha-2",
     "tenant_id": "tenant-alpha",
-    "name": "Alpha Hawks"
+    "name": "Lahore Lions"
    },
    {
     "squad_id": "club-alpha-3",

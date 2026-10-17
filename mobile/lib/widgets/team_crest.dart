@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import '../core/format.dart';
 import '../core/theme.dart';
 
-/// Club crest. The API has no club logos yet, so each club gets a stable shield in its own
-/// colour with its initials (same club = same crest on every screen).
+/// Club crest. Clubs with a bundled logo (assets/crests/<club_id>.jpg) show it; every other club
+/// gets a stable shield in its own colour with its initials (same club = same crest on every screen).
 class TeamCrest extends StatelessWidget {
   final String teamId;
   final String name;
@@ -22,6 +22,12 @@ class TeamCrest extends StatelessWidget {
     Color(0xFF9D174D), // maroon
   ];
 
+  /// Bundled club logos, keyed by club id.
+  static const _logos = {
+    'club-alpha-1': 'assets/crests/club-alpha-1.jpg', // Karachi Kings
+    'club-alpha-2': 'assets/crests/club-alpha-2.jpg', // Lahore Lions
+  };
+
   static Color colorFor(String id) => _colors[id.codeUnits.fold<int>(7, (h, c) => (h * 31 + c) & 0x7fffffff) % _colors.length];
 
   String get _initials {
@@ -33,6 +39,25 @@ class TeamCrest extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final logo = _logos[teamId];
+    if (logo != null) {
+      return Semantics(
+        label: '$name crest',
+        image: true,
+        excludeSemantics: true,
+        child: SizedBox(
+          width: size,
+          height: size * 1.12,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(size * 0.18),
+            child: ColoredBox(
+              color: Colors.white,
+              child: Image.asset(logo, fit: BoxFit.contain),
+            ),
+          ),
+        ),
+      );
+    }
     final color = colorFor(teamId);
     return Semantics(
       label: '$name crest',
