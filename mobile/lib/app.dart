@@ -71,16 +71,23 @@ class NasconApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
     final tenant = ref.watch(sessionProvider)?.tenant;
+    final accent = parseHexColor(tenant?.primaryColor);
     return MaterialApp.router(
       title: 'NaSCon Sports',
       debugShowCheckedModeBanner: false,
-      theme: buildTheme(parseHexColor(tenant?.primaryColor)),
+      theme: buildTheme(accent, Brightness.light),
+      darkTheme: buildTheme(accent, Brightness.dark),
+      themeMode: ThemeMode.system,
+      scrollBehavior: const AppScrollBehavior(),
       routerConfig: router,
       // SyncStatusBar sits above every screen (including Login and dialogs' parent routes).
-      builder: (context, child) => Column(children: [
-        SafeArea(bottom: false, child: SyncStatusBar(onTap: () => router.push('/sync'))),
-        Expanded(child: MediaQuery.removePadding(context: context, removeTop: true, child: child!)),
-      ]),
+      builder: (context, child) => ColoredBox(
+        color: context.palette.canvas,
+        child: Column(children: [
+          SafeArea(bottom: false, child: SyncStatusBar(onTap: () => router.push('/sync'))),
+          Expanded(child: MediaQuery.removePadding(context: context, removeTop: true, child: child!)),
+        ]),
+      ),
     );
   }
 }

@@ -1,40 +1,58 @@
 import 'package:flutter/material.dart';
 
 import '../core/format.dart';
+import '../core/theme.dart';
 
-/// Colour + icon + TEXT, so meaning never depends on colour alone.
+enum _Tone { live, success, warning, danger, neutral, accent }
+
+/// Small tinted capsule: icon + TEXT + colour, so meaning never depends on colour alone.
 class StatusChip extends StatelessWidget {
   final String label;
   final IconData icon;
-  final Color color;
-  const StatusChip({super.key, required this.label, required this.icon, required this.color});
+  final _Tone _tone;
+
+  const StatusChip._(this.label, this.icon, this._tone);
 
   factory StatusChip.match(String status) => switch (status) {
-        'in_progress' => const StatusChip(label: 'Live', icon: Icons.circle, color: Colors.red),
-        'completed' => const StatusChip(label: 'Full time', icon: Icons.check_circle, color: Colors.grey),
-        'upcoming' => const StatusChip(label: 'Upcoming', icon: Icons.schedule, color: Colors.blue),
-        'postponed' => const StatusChip(label: 'Postponed', icon: Icons.update, color: Colors.orange),
-        _ => StatusChip(label: humanize(status), icon: Icons.info_outline, color: Colors.grey),
+        'in_progress' => const StatusChip._('Live', Icons.circle, _Tone.live),
+        'completed' => const StatusChip._('Full Time', Icons.check_rounded, _Tone.neutral),
+        'upcoming' => const StatusChip._('Upcoming', Icons.schedule_rounded, _Tone.accent),
+        'postponed' => const StatusChip._('Postponed', Icons.update_rounded, _Tone.warning),
+        _ => StatusChip._(humanize(status), Icons.info_outline_rounded, _Tone.neutral),
       };
 
   factory StatusChip.qualification(String status) => switch (status) {
-        'clinched' => const StatusChip(label: 'Clinched', icon: Icons.verified, color: Colors.green),
-        'eliminated' => const StatusChip(label: 'Eliminated', icon: Icons.cancel, color: Colors.red),
-        _ => const StatusChip(label: 'Still possible', icon: Icons.more_horiz, color: Colors.orange),
+        'clinched' => const StatusChip._('Clinched', Icons.check_circle_rounded, _Tone.success),
+        'eliminated' => const StatusChip._('Eliminated', Icons.cancel_rounded, _Tone.danger),
+        _ => const StatusChip._('In Contention', Icons.remove_circle_outline_rounded, _Tone.warning),
       };
 
   factory StatusChip.sync(String status) => switch (status) {
-        'applied' => const StatusChip(label: 'Applied', icon: Icons.check_circle, color: Colors.green),
-        'duplicate' => const StatusChip(label: 'Already synced', icon: Icons.copy, color: Colors.grey),
-        'rejected' => const StatusChip(label: 'Rejected', icon: Icons.block, color: Colors.red),
-        _ => const StatusChip(label: 'Pending', icon: Icons.schedule, color: Colors.orange),
+        'applied' => const StatusChip._('Applied', Icons.check_circle_rounded, _Tone.success),
+        'duplicate' => const StatusChip._('Already Synced', Icons.done_all_rounded, _Tone.neutral),
+        'rejected' => const StatusChip._('Rejected', Icons.block_rounded, _Tone.danger),
+        _ => const StatusChip._('Pending', Icons.schedule_rounded, _Tone.warning),
       };
 
   @override
-  Widget build(BuildContext context) => Chip(
-        avatar: Icon(icon, size: 16, color: color),
-        label: Text(label),
-        visualDensity: VisualDensity.compact,
-        side: BorderSide(color: color),
-      );
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final color = switch (_tone) {
+      _Tone.live => p.live,
+      _Tone.success => p.success,
+      _Tone.warning => p.warning,
+      _Tone.danger => p.danger,
+      _Tone.accent => p.accent,
+      _Tone.neutral => p.secondaryLabel,
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(100)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: _tone == _Tone.live ? 8 : 14, color: color),
+        const SizedBox(width: 5),
+        Text(label, style: Theme.of(context).textTheme.labelMedium!.copyWith(color: color)),
+      ]),
+    );
+  }
 }

@@ -1,15 +1,18 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/format.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repository.dart';
 import '../../data/sync_queue.dart';
 import '../../widgets/async_view.dart';
 import '../../widgets/confirm_dialog.dart';
-import '../../widgets/league_picker.dart';
+import '../../widgets/status_chip.dart';
+import '../../widgets/ui.dart';
 import '../match/match_screen.dart';
 
 /// Organizer only: append score events and compensating events. Queued when offline.
@@ -32,45 +35,61 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
     if (session == null || !session.canScore) {
       return Scaffold(
         appBar: AppBar(title: const Text('Scoring')),
-        body: const EmptyState(message: 'Only league organizers can enter scores.', icon: Icons.lock_outline),
+        body: const EmptyState(message: 'Only league organizers can enter scores.', icon: Icons.lock_rounded),
       );
     }
+    final leagues = ref.watch(leaguesProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Scoring entry')),
-      body: LeagueScoped(builder: (context, league) {
-        final fixtures = ref.watch(fixturesProvider(league.leagueId));
-        return AsyncView<List<Fixture>>(
-          value: fixtures,
-          onRetry: () => ref.invalidate(fixturesProvider(league.leagueId)),
-          isEmpty: (l) => l.where((f) => f.status != 'completed').isEmpty,
-          emptyMessage: 'No live or upcoming matches to score',
-          builder: (list) {
-            final open = list.where((f) => f.status != 'completed').toList();
-            return ListView(padding: const EdgeInsets.all(16), children: [
-              Text('Match', style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              Wrap(spacing: 8, runSpacing: 8, children: [
-                for (final f in open)
-                  ChoiceChip(
-                    label: Text('${f.homeName} vs ${f.awayName}'),
-                    selected: _matchId == f.matchId,
-                    onSelected: (_) => setState(() => _matchId = f.matchId),
+      appBar: AppBar(title: const Text('Scoring')),
+      body: AsyncView<List<League>>(
+        value: leagues,
+        onRetry: () => ref.invalidate(leaguesProvider),
+        isEmpty: (l) => l.isEmpty,
+        emptyMessage: 'No leagues yet',
+        builder: (list) {
+          final selected = ref.watch(selectedLeagueProvider);
+          final league = list.firstWhere((l) => l.leagueId == selected, orElse: () => list.first);
+          final fixtures = ref.watch(fixturesProvider(league.leagueId));
+          return AsyncView<List<Fixture>>(
+            value: fixtures,
+            onRetry: () => ref.invalidate(fixturesProvider(league.leagueId)),
+            isEmpty: (l) => l.every((f) => f.status == 'completed'),
+            emptyMessage: 'No live or upcoming matches to score',
+            builder: (all) {
+              final open = all.where((f) => f.status != 'completed').toList();
+              return ListView(padding: const EdgeInsets.only(top: 12, bottom: 32), children: [
+                Section(header: 'Match', children: [
+                  for (final f in open)
+                    ListTile(
+                      title: Text('${f.homeName} vs ${f.awayName}', overflow: TextOverflow.ellipsis),
+                      subtitle: Text(formatDateTime(f.scheduledAt)),
+                      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                        StatusChip.match(f.status),
+                        SizedBox(
+                          width: 32,
+                          child: _matchId == f.matchId
+                              ? Icon(Icons.check_rounded, color: context.palette.accent, semanticLabel: 'Selected')
+                              : null,
+                        ),
+                      ]),
+                      onTap: () => setState(() => _matchId = f.matchId),
+                    ),
+                ]),
+                if (_matchId == null)
+                  const EmptyState(message: 'Choose a match to start scoring.', icon: Icons.scoreboard_rounded)
+                else
+                  _MatchScoring(
+                    matchId: _matchId!,
+                    homeSelected: _homeSelected,
+                    busy: _busy,
+                    onTeamChanged: (home) => setState(() => _homeSelected = home),
+                    onSubmit: _submit,
                   ),
-              ]),
-              if (_matchId == null)
-                const Padding(padding: EdgeInsets.only(top: 24), child: Text('Choose a match to start scoring.'))
-              else
-                _MatchScoring(
-                  matchId: _matchId!,
-                  homeSelected: _homeSelected,
-                  busy: _busy,
-                  onTeamChanged: (home) => setState(() => _homeSelected = home),
-                  onSubmit: _submit,
-                ),
-            ]);
-          },
-        );
-      }),
+              ]);
+            },
+          );
+        },
+      ),
     );
   }
 
@@ -79,7 +98,7 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
     final body = {'event_id': 'evt-${const Uuid().v4()}', 'match_id': match.matchId, 'type': type, 'payload': payload};
     if (ref.read(syncProvider).isOffline) {
       await ref.read(syncProvider.notifier).enqueue(type: 'score_event', baseVersion: match.version, payload: body);
-      if (mounted) showSuccess(context, "Saved as pending. It will sync when you're back online.");
+      if (mounted) showSuccess(context, 'Saved. It will sync when you’re back online.');
       return;
     }
     setState(() => _busy = true);
@@ -113,69 +132,87 @@ class _MatchScoring extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final match = ref.watch(matchProvider(matchId));
+    final t = Theme.of(context).textTheme;
     return match.when(
-      loading: () => const Padding(padding: EdgeInsets.all(24), child: LoadingView()),
-      error: (e, _) => ErrorView(message: 'Could not load this match.', onRetry: () => ref.invalidate(matchProvider(matchId))),
+      loading: () => const Padding(padding: EdgeInsets.all(32), child: LoadingView()),
+      error: (e, _) => ErrorView(message: 'Couldn’t load this match.', onRetry: () => ref.invalidate(matchProvider(matchId))),
       data: (m) {
         final eventTypes = ref.watch(eventTypesProvider(m.sportId));
         final team = homeSelected ? m.home : m.away;
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          ScoreBoard(match: m),
+          ScoreBoard(match: m, compact: true),
           if (m.status == 'upcoming')
-            FilledButton.icon(
-              onPressed: busy ? null : () => onSubmit(m, 'match_start', {}, 'Match started.'),
-              icon: const Icon(Icons.play_arrow),
-              label: const Text('Start match'),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
+              child: PrimaryButton(
+                label: 'Start Match',
+                icon: Icons.play_arrow_rounded,
+                onPressed: busy ? null : () => onSubmit(m, 'match_start', {}, 'Match started.'),
+              ),
             ),
           if (m.status == 'in_progress') ...[
-            Text('Team', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            SegmentedButton<bool>(
-              segments: [
-                ButtonSegment(value: true, label: Text(m.home.name, overflow: TextOverflow.ellipsis)),
-                ButtonSegment(value: false, label: Text(m.away.name, overflow: TextOverflow.ellipsis)),
-              ],
-              selected: {homeSelected},
-              onSelectionChanged: (s) => onTeamChanged(s.first),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+              child: Segmented<bool>(
+                value: homeSelected,
+                options: {true: m.home.name, false: m.away.name},
+                onChanged: onTeamChanged,
+              ),
             ),
-            const SizedBox(height: 16),
-            Text('Add event for ${team.name}', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            eventTypes.when(
-              loading: () => const LinearProgressIndicator(),
-              error: (e, _) => const Text("Couldn't load this sport's event types."),
-              data: (types) => Wrap(spacing: 8, runSpacing: 8, children: [
-                for (final t in types)
-                  FilledButton.tonal(
-                    onPressed: busy
-                        ? null
-                        : () => onSubmit(m, 'score', {'team_id': team.teamId, 'event_type': t}, '${humanize(t)} added for ${team.name}.'),
-                    child: Text(humanize(t)),
-                  ),
-              ]),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(32, 0, 32, 10),
+              child: Text('Add for ${team.name}', style: t.bodySmall!.copyWith(fontWeight: FontWeight.w600)),
             ),
-            const SizedBox(height: 16),
-            OutlinedButton.icon(
-              onPressed: busy
-                  ? null
-                  : () async {
-                      final ok = await confirmAction(context, title: 'End match?', message: 'The final score will be locked in.', confirmLabel: 'End match');
-                      if (ok) await onSubmit(m, 'match_end', {}, 'Match ended.');
-                    },
-              icon: const Icon(Icons.stop),
-              label: const Text('End match'),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: eventTypes.when(
+                loading: () => const Center(child: CupertinoActivityIndicator()),
+                error: (e, _) => const Text('Couldn’t load this sport’s events.'),
+                data: (types) => Wrap(spacing: 10, runSpacing: 10, children: [
+                  for (final type in types)
+                    OutlinedButton(
+                      onPressed: busy
+                          ? null
+                          : () => onSubmit(m, 'score', {'team_id': team.teamId, 'event_type': type},
+                              '${humanize(type)} added for ${team.name}.'),
+                      child: Text(humanize(type)),
+                    ),
+                ]),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
+              child: SecondaryButton(
+                label: 'End Match',
+                icon: Icons.flag_rounded,
+                destructive: true,
+                onPressed: busy
+                    ? null
+                    : () async {
+                        final ok = await confirmAction(context,
+                            title: 'End Match?', message: 'The final score will be locked in.', confirmLabel: 'End Match', destructive: true);
+                        if (ok) await onSubmit(m, 'match_end', {}, 'Match ended.');
+                      },
+              ),
             ),
           ],
-          const SectionHeader('Events'),
-          if (m.events.isEmpty) const Text('No events yet.'),
-          for (final e in m.events.reversed)
-            EventTile(
-              event: e,
-              match: m,
-              trailing: e.canBeCompensated
-                  ? TextButton(onPressed: busy ? null : () => _compensate(context, m, e), child: const Text('Correct'))
-                  : null,
-            ),
+          Section(
+            header: 'Events',
+            footer: 'Correct adds a new event that cancels the old one. The original stays in the log.',
+            dividerIndent: 60,
+            children: m.events.isEmpty
+                ? [const ListTile(title: Text('No events yet'))]
+                : [
+                    for (final e in m.events.reversed)
+                      EventTile(
+                        event: e,
+                        match: m,
+                        trailing: e.canBeCompensated
+                            ? TextButton(onPressed: busy ? null : () => _compensate(context, m, e), child: const Text('Correct'))
+                            : null,
+                      ),
+                  ],
+          ),
         ]);
       },
     );
@@ -183,18 +220,20 @@ class _MatchScoring extends ConsumerWidget {
 
   Future<void> _compensate(BuildContext context, MatchDetail m, MatchEvent e) async {
     final reason = TextEditingController();
-    final ok = await showDialog<bool>(
+    final ok = await showCupertinoDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Correct this event?'),
+      barrierDismissible: true,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: Text('Correct Event ${e.sequence}?'),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('Event #${e.sequence} will be cancelled out by a correction. The original stays in the log.'),
+          const SizedBox(height: 6),
+          const Text('A correction cancels it out. The original stays in the log.'),
           const SizedBox(height: 12),
-          TextField(controller: reason, decoration: const InputDecoration(labelText: 'Reason')),
+          CupertinoTextField(controller: reason, placeholder: 'Reason', autofocus: true),
         ]),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Correct')),
+          CupertinoDialogAction(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          CupertinoDialogAction(isDestructiveAction: true, onPressed: () => Navigator.pop(ctx, true), child: const Text('Correct')),
         ],
       ),
     );

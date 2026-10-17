@@ -3,11 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../../data/sync_queue.dart';
 import '../../widgets/confirm_dialog.dart';
 import '../../widgets/tenant_title.dart';
+import '../../widgets/ui.dart';
 
-/// Role-filtered menu: Roster (manager), Scoring (organizer), Sync, Settings, Sign out.
+/// Account tab: who you are, then the tools your role can use (Roster, Scoring), Sync, Server, Sign Out.
 class MoreScreen extends ConsumerWidget {
   const MoreScreen({super.key});
 
@@ -16,55 +18,67 @@ class MoreScreen extends ConsumerWidget {
     final session = ref.watch(sessionProvider);
     final pending = ref.watch(syncProvider).pending.length;
     if (session == null) return const SizedBox.shrink();
-    return Scaffold(
-      appBar: AppBar(title: const TenantTitle('More')),
-      body: ListView(children: [
-        ListTile(
-          leading: const CircleAvatar(child: Icon(Icons.person, semanticLabel: 'Profile')),
-          title: Text(session.user.displayName),
-          subtitle: Text('${session.roleLabel} · ${session.tenant.name}'),
-        ),
-        const Divider(),
-        if (session.canManageRoster)
-          ListTile(
-            leading: const Icon(Icons.groups),
-            title: const Text('Roster management'),
-            subtitle: const Text('Transfer, loan or release players'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/roster'),
-          ),
-        if (session.canScore)
-          ListTile(
-            leading: const Icon(Icons.scoreboard),
-            title: const Text('Scoring entry'),
-            subtitle: const Text('Add score events and corrections'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/scoring'),
-          ),
-        ListTile(
-          leading: const Icon(Icons.sync),
-          title: const Text('Sync queue'),
-          subtitle: Text(pending == 0 ? 'Nothing waiting to sync' : '$pending waiting to sync'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => context.push('/sync'),
-        ),
-        ListTile(
-          leading: const Icon(Icons.settings),
-          title: const Text('Settings'),
-          subtitle: const Text('Server address'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => context.push('/settings'),
-        ),
-        const Divider(),
-        ListTile(
-          leading: const Icon(Icons.logout),
-          title: const Text('Sign out'),
-          onTap: () async {
-            final ok = await confirmAction(context, title: 'Sign out?', message: 'You will need to sign in again.', confirmLabel: 'Sign out');
-            if (ok) ref.read(sessionProvider.notifier).logout();
-          },
-        ),
-      ]),
+    final p = context.palette;
+    final t = Theme.of(context).textTheme;
+
+    Widget row(IconData icon, String title, String route, {String? value}) => ListTile(
+          leading: Icon(icon),
+          title: Text(title),
+          trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+            if (value != null) Text(value),
+            const SizedBox(width: 4),
+            Icon(Icons.chevron_right_rounded, color: p.secondaryLabel.withValues(alpha: 0.6)),
+          ]),
+          onTap: () => context.push(route),
+        );
+
+    return LargeTitlePage(
+      title: 'Account',
+      slivers: [
+        SliverList.list(children: [
+          const SizedBox(height: 12),
+          Section(children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(children: [
+                const TenantMark(size: 52),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(session.user.displayName, style: t.headlineSmall, overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 2),
+                    Text('${session.roleLabel}, ${session.tenant.name}', style: t.bodyMedium),
+                  ]),
+                ),
+              ]),
+            ),
+          ]),
+          if (session.canManageRoster || session.canScore)
+            Section(header: 'Manage', children: [
+              if (session.canManageRoster) row(Icons.groups_rounded, 'Roster', '/roster'),
+              if (session.canScore) row(Icons.scoreboard_rounded, 'Scoring', '/scoring'),
+            ]),
+          Section(children: [
+            row(Icons.sync_rounded, 'Sync Queue', '/sync', value: pending == 0 ? null : '$pending pending'),
+            row(Icons.dns_rounded, 'Server', '/settings'),
+          ]),
+          Section(children: [
+            ListTile(
+              title: Center(child: Text('Sign Out', style: TextStyle(color: p.danger))),
+              onTap: () async {
+                final ok = await confirmAction(
+                  context,
+                  title: 'Sign Out?',
+                  message: "You'll need to sign in again to see your club.",
+                  confirmLabel: 'Sign Out',
+                  destructive: true,
+                );
+                if (ok) ref.read(sessionProvider.notifier).logout();
+              },
+            ),
+          ]),
+        ]),
+      ],
     );
   }
 }

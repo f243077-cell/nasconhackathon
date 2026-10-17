@@ -2,7 +2,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/config.dart';
+import '../../core/theme.dart';
 import '../../widgets/async_view.dart';
+import '../../widgets/ui.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -14,6 +16,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final _url = TextEditingController();
   bool _testing = false;
+  bool? _reachable;
 
   @override
   void initState() {
@@ -28,19 +31,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _test() async {
-    setState(() => _testing = true);
+    setState(() {
+      _testing = true;
+      _reachable = null;
+    });
+    var ok = false;
     try {
       await Dio(BaseOptions(connectTimeout: const Duration(seconds: 3), receiveTimeout: const Duration(seconds: 3)))
           .get('${_url.text.trim()}/api/v1/ping');
-      if (mounted) showSuccess(context, 'Connected to the server.');
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Can't reach the server. Check the address and that you're on the same Wi-Fi.")),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _testing = false);
+      ok = true;
+    } catch (_) {}
+    if (mounted) {
+      setState(() {
+        _testing = false;
+        _reachable = ok;
+      });
     }
   }
 
@@ -51,29 +56,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final p = context.palette;
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          TextField(
-            controller: _url,
-            keyboardType: TextInputType.url,
-            decoration: const InputDecoration(
-              labelText: 'Server address',
-              helperText: 'Emulator: http://10.0.2.2:8080 · Phone: http://<laptop-IP>:8080',
+      appBar: AppBar(title: const Text('Server')),
+      body: ListView(padding: const EdgeInsets.only(top: 16), children: [
+        Section(
+          header: 'Server address',
+          footer: 'Emulator: http://10.0.2.2:8080\nPhone: http://<laptop IP>:8080 on the same Wi-Fi',
+          children: [
+            TextField(
+              controller: _url,
+              keyboardType: TextInputType.url,
+              autocorrect: false,
+              style: Theme.of(context).textTheme.bodyLarge!.copyWith(fontFeatures: tabular),
+              decoration: const InputDecoration(
+                hintText: 'http://10.0.2.2:8080',
+                filled: false,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+              ),
             ),
+          ],
+        ),
+        Section(children: [
+          ListTile(
+            title: Text('Test Connection', style: TextStyle(color: p.accent)),
+            onTap: _testing ? null : _test,
+            trailing: _testing
+                ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : _reachable == null
+                    ? null
+                    : Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(
+                          _reachable! ? Icons.check_circle_rounded : Icons.error_rounded,
+                          size: 18,
+                          color: _reachable! ? p.success : p.danger,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(_reachable! ? 'Connected' : "Can't reach server"),
+                      ]),
           ),
-          const SizedBox(height: 16),
-          OutlinedButton.icon(
-            onPressed: _testing ? null : _test,
-            icon: const Icon(Icons.network_check),
-            label: Text(_testing ? 'Testing…' : 'Test connection'),
-          ),
-          const SizedBox(height: 12),
-          FilledButton.icon(onPressed: _save, icon: const Icon(Icons.save), label: const Text('Save')),
         ]),
-      ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: PrimaryButton(label: 'Save', onPressed: _save),
+        ),
+      ]),
     );
   }
 }

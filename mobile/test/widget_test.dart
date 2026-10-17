@@ -6,7 +6,7 @@ void main() {
   testWidgets('starts on the login screen with the sync bar', (tester) async {
     await tester.pumpWidget(const ProviderScope(child: NasconApp()));
     await tester.pumpAndSettle();
-    expect(find.text('Sign in'), findsWidgets);
+    expect(find.text('Sign In'), findsWidgets);
     expect(find.text('Online'), findsOneWidget);
   });
 }

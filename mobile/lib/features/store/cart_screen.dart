@@ -5,14 +5,15 @@ import 'package:uuid/uuid.dart';
 
 import '../../core/format.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../../data/repository.dart';
 import '../../data/sync_queue.dart';
 import '../../widgets/async_view.dart';
 import '../../widgets/confirm_dialog.dart';
+import '../../widgets/ui.dart';
 import 'cart.dart';
-import 'product_screen.dart';
 
-/// Cart + discount + mock payment + checkout (with confirmation).
+/// Cart, discount, mock payment and checkout (with confirmation). Pay sits in the bottom bar.
 class CartScreen extends ConsumerStatefulWidget {
   const CartScreen({super.key});
 
@@ -28,9 +29,9 @@ class _CartScreenState extends ConsumerState<CartScreen> {
   bool _paying = false;
 
   static const _tokens = {
-    'tok_success': 'Test card (approves)',
-    'tok_declined': 'Test card (declined)',
-    'tok_capture_fail': 'Test card (capture fails)',
+    'tok_success': 'Approves',
+    'tok_declined': 'Declines',
+    'tok_capture_fail': 'Fails',
   };
 
   @override
@@ -50,7 +51,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
         _codeError = null;
       } else {
         _appliedCode = null;
-        _codeError = "That discount code isn't valid.";
+        _codeError = "That code isn't valid.";
       }
     });
   }
@@ -58,8 +59,8 @@ class _CartScreenState extends ConsumerState<CartScreen> {
   Future<void> _pay(int totalMinor) async {
     final ok = await confirmAction(
       context,
-      title: 'Confirm payment',
-      message: 'Pay ${formatMoney(totalMinor)} now?',
+      title: 'Pay ${formatMoney(totalMinor)}?',
+      message: 'Your order will be placed and the test card charged.',
       confirmLabel: 'Pay',
     );
     if (!ok || !mounted) return;
@@ -91,80 +92,107 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     final subtotal = lines.fold<int>(0, (s, l) => s + l.totalMinor);
     final discount = _appliedCode == 'WELCOME10' ? subtotal * 10 ~/ 100 : 0;
     final total = subtotal - discount;
+    final t = Theme.of(context).textTheme;
+    final p = context.palette;
+
+    if (lines.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Cart')),
+        body: EmptyState(
+          message: 'Your cart is empty',
+          icon: Icons.shopping_cart_rounded,
+          action: TextButton(onPressed: () => context.go('/store'), child: const Text('Browse the Store')),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(title: const Text('Cart')),
-      body: lines.isEmpty
-          ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const EmptyState(message: 'Your cart is empty', icon: Icons.shopping_cart_outlined),
-              FilledButton(onPressed: () => context.go('/store'), child: const Text('Browse the store')),
-            ])
-          : ListView(padding: const EdgeInsets.all(16), children: [
-              for (final l in lines)
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(8),
+      bottomNavigationBar: BottomActionBar(children: [
+        if (offline)
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(Icons.cloud_off_rounded, size: 16, color: p.warning),
+            const SizedBox(width: 6),
+            Flexible(child: Text('Checkout needs an internet connection.', style: t.bodyMedium)),
+          ]),
+        PrimaryButton(label: 'Pay ${formatMoney(total)}', loading: _paying, onPressed: offline ? null : () => _pay(total)),
+      ]),
+      body: ListView(padding: const EdgeInsets.only(top: 12, bottom: 24), children: [
+        Section(
+          dividerIndent: 84,
+          children: [
+            for (final l in lines)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 4, 12),
+                child: Row(children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: SizedBox.square(dimension: 56, child: ProductArtwork(type: l.product.type, iconSize: 26)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(l.product.name),
-                        subtitle: Text('${l.variant.label} · ${formatMoney(l.variant.priceMinor)} each'),
-                        trailing: IconButton(
-                          tooltip: 'Remove ${l.product.name}',
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () => ref.read(cartProvider.notifier).remove(l.variant.variantId),
+                      Text(l.product.name, style: t.titleMedium, overflow: TextOverflow.ellipsis),
+                      if (l.variant.label.isNotEmpty) Text(l.variant.label, style: t.bodyMedium),
+                      const SizedBox(height: 8),
+                      Row(children: [
+                        QuantityStepper(
+                          value: l.quantity,
+                          max: l.variant.stock.clamp(1, 10),
+                          onChanged: (q) => ref.read(cartProvider.notifier).setQuantity(l.variant.variantId, q),
                         ),
-                      ),
-                      QuantityStepper(
-                        value: l.quantity,
-                        max: l.variant.stock.clamp(1, 10),
-                        onChanged: (q) => ref.read(cartProvider.notifier).setQuantity(l.variant.variantId, q),
-                      ),
+                        const Spacer(),
+                        Text(formatMoney(l.totalMinor), style: t.bodyLarge!.copyWith(fontFeatures: tabular)),
+                      ]),
                     ]),
                   ),
-                ),
-              const SectionHeader('Discount code'),
-              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Expanded(
-                  child: TextField(
-                    controller: _code,
-                    textCapitalization: TextCapitalization.characters,
-                    decoration: InputDecoration(labelText: 'Code', errorText: _codeError),
+                  IconButton(
+                    tooltip: 'Remove ${l.product.name}',
+                    icon: Icon(Icons.close_rounded, color: p.secondaryLabel),
+                    onPressed: () => ref.read(cartProvider.notifier).remove(l.variant.variantId),
+                  ),
+                ]),
+              ),
+          ],
+        ),
+        Section(
+          header: 'Discount Code',
+          footer: _codeError ?? (_appliedCode != null ? '$_appliedCode applied, 10% off.' : null),
+          children: [
+            Row(children: [
+              Expanded(
+                child: TextField(
+                  controller: _code,
+                  textCapitalization: TextCapitalization.characters,
+                  autocorrect: false,
+                  onSubmitted: (_) => _applyCode(),
+                  decoration: const InputDecoration(
+                    hintText: 'Enter code',
+                    filled: false,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
                   ),
                 ),
-                const SizedBox(width: 8),
-                OutlinedButton(onPressed: _applyCode, child: const Text('Apply')),
-              ]),
-              const SectionHeader('Payment method'),
-              Wrap(spacing: 8, runSpacing: 8, children: [
-                for (final t in _tokens.entries)
-                  ChoiceChip(label: Text(t.value), selected: _token == t.key, onSelected: (_) => setState(() => _token = t.key)),
-              ]),
-              const SectionHeader('Summary'),
-              _row('Subtotal', formatMoney(subtotal)),
-              if (discount > 0) _row('Discount ($_appliedCode)', '− ${formatMoney(discount)}'),
-              _row('Total', formatMoney(total), bold: true),
-              const SizedBox(height: 24),
-              if (offline)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 8),
-                  child: Text('Checkout needs an internet connection.', textAlign: TextAlign.center),
-                ),
-              FilledButton(
-                onPressed: _paying || offline ? null : () => _pay(total),
-                child: _paying
-                    ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Text('Pay ${formatMoney(total)}'),
               ),
+              TextButton(onPressed: _applyCode, child: const Text('Apply')),
             ]),
-    );
-  }
-
-  Widget _row(String label, String value, {bool bold = false}) {
-    final style = bold ? Theme.of(context).textTheme.titleMedium : null;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(children: [Expanded(child: Text(label, style: style)), Text(value, style: style)]),
+          ],
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(32, 0, 32, 8),
+          child: Text('Test Card', style: t.bodySmall!.copyWith(fontWeight: FontWeight.w600)),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
+          child: Segmented<String>(value: _token, options: _tokens, onChanged: (v) => setState(() => _token = v)),
+        ),
+        Section(children: [
+          ValueRow('Subtotal', formatMoney(subtotal)),
+          if (discount > 0) ValueRow('Discount', '−${formatMoney(discount)}'),
+          ValueRow('Total', formatMoney(total), emphasized: true),
+        ]),
+      ]),
     );
   }
 }
