@@ -1,0 +1,112 @@
+{
+  "tenants": [
+    {"tenant_id": "tenant-alpha", "name": "Alpha Sports", "logo_url": "/static/tenant-alpha.png",
+     "primary_color": "#0B5FFF", "secondary_color": "#FFB800"},
+    {"tenant_id": "tenant-beta", "name": "Beta Athletics", "logo_url": "/static/tenant-beta.png",
+     "primary_color": "#0E7C3A", "secondary_color": "#F2F2F2"}
+  ],
+  "clubs": [
+    {"club_id": "club-alpha-1", "tenant_id": "tenant-alpha", "name": "Alpha Falcons",
+     "profile": {"venue": {"name": "Falcon Park", "lat": 33.6844, "lng": 73.0479},
+                 "socials": {"x": "@alphafalcons", "instagram": "@alphafalcons"},
+                 "staff": [{"name": "Imran Khalid", "role": "coach"}, {"name": "Sara Malik", "role": "manager"},
+                           {"name": "Dr. Ahmed Raza", "role": "physio"}],
+                 "stats": [{"season": "2025", "played": 6, "won": 4, "drawn": 1, "lost": 1},
+                           {"season": "2026", "played": 0, "won": 0, "drawn": 0, "lost": 0}]}},
+    {"club_id": "club-alpha-2", "tenant_id": "tenant-alpha", "name": "Alpha Hawks",
+     "profile": {"venue": {"name": "Hawk Ground", "lat": 33.7294, "lng": 73.0931},
+                 "socials": {"x": "@alphahawks"},
+                 "staff": [{"name": "Bilal Ahmed", "role": "coach"}, {"name": "Hina Tariq", "role": "manager"},
+                           {"name": "Dr. Usman Ali", "role": "physio"}],
+                 "stats": [{"season": "2025", "played": 6, "won": 2, "drawn": 2, "lost": 2}]}},
+    {"club_id": "club-alpha-3", "tenant_id": "tenant-alpha", "name": "Alpha Lions",
+     "profile": {"venue": {"name": "Lion Arena", "lat": 33.6518, "lng": 73.0786}, "socials": {},
+                 "staff": [{"name": "Kamran Shah", "role": "coach"}], "stats": []}},
+    {"club_id": "club-alpha-4", "tenant_id": "tenant-alpha", "name": "Alpha Wolves",
+     "profile": {"venue": {"name": "Wolf Stadium", "lat": 33.7000, "lng": 73.0500}, "socials": {},
+                 "staff": [{"name": "Nadia Hussain", "role": "coach"}], "stats": []}},
+    {"club_id": "club-beta-1", "tenant_id": "tenant-beta", "name": "Beta Titans",
+     "profile": {"venue": {"name": "Titan Field", "lat": 31.5204, "lng": 74.3587}, "socials": {},
+                 "staff": [{"name": "Omar Farooq", "role": "coach"}], "stats": []}}
+  ],
+  "players": [
+    {"player_id": "player-alpha-1", "club_id": "club-alpha-1", "tenant_id": "tenant-alpha", "name": "Ali Hassan",
+     "position": "gk", "role": "captain"},
+    {"player_id": "player-alpha-1b", "club_id": "club-alpha-1", "tenant_id": "tenant-alpha", "name": "Zain Abbas",
+     "position": "df", "role": "starter"},
+    {"player_id": "player-alpha-1c", "club_id": "club-alpha-1", "tenant_id": "tenant-alpha", "name": "Hamza Iqbal",
+     "position": "fw", "role": "substitute"},
+    {"player_id": "player-alpha-2", "club_id": "club-alpha-2", "tenant_id": "tenant-alpha", "name": "Bilal Khan",
+     "position": "gk", "role": "captain"},
+    {"player_id": "player-beta-1", "club_id": "club-beta-1", "tenant_id": "tenant-beta", "name": "Faisal Noor",
+     "position": "gk", "role": "captain"}
+  ],
+  "leagues": [
+    {"league_id": "league-alpha-1", "tenant_id": "tenant-alpha", "name": "Alpha Premier League", "season": "2026",
+     "sport_id": "football", "teams": ["club-alpha-1", "club-alpha-2", "club-alpha-3", "club-alpha-4"],
+     "qualification_spots": 2,
+     "fixtures": [
+       {"match_id": "demo-a1-m1", "home": "club-alpha-1", "away": "club-alpha-2", "scheduled_at": "2026-10-10T14:00:00Z", "venue": "Falcon Park"},
+       {"match_id": "demo-a1-m2", "home": "club-alpha-3", "away": "club-alpha-4", "scheduled_at": "2026-10-10T17:00:00Z", "venue": "Lion Arena"},
+       {"match_id": "demo-a1-m3", "home": "club-alpha-1", "away": "club-alpha-3", "scheduled_at": "2026-10-17T14:00:00Z", "venue": "Falcon Park"},
+       {"match_id": "demo-a1-m4", "home": "club-alpha-2", "away": "club-alpha-4", "scheduled_at": "2026-10-17T17:00:00Z", "venue": "Hawk Ground"},
+       {"match_id": "demo-a1-m5", "home": "club-alpha-4", "away": "club-alpha-1", "scheduled_at": "2026-10-24T14:00:00Z", "venue": "Wolf Stadium"},
+       {"match_id": "demo-a1-m6", "home": "club-alpha-3", "away": "club-alpha-2", "scheduled_at": "2026-10-24T17:00:00Z", "venue": "Lion Arena"}
+     ],
+     "demo_events": {
+       "demo-a1-m1": [["match_start", {}], ["score", {"team_id": "club-alpha-1", "event_type": "goal"}],
+                      ["score", {"team_id": "club-alpha-1", "event_type": "goal"}],
+                      ["score", {"team_id": "club-alpha-2", "event_type": "goal"}], ["match_end", {}]],
+       "demo-a1-m2": [["match_start", {}], ["score", {"team_id": "club-alpha-4", "event_type": "goal"}],
+                      ["score", {"team_id": "club-alpha-3", "event_type": "goal"}], ["match_end", {}]],
+       "demo-a1-m3": [["match_start", {}], ["score", {"team_id": "club-alpha-3", "event_type": "goal"}]]
+     }},
+    {"league_id": "league-alpha-2", "tenant_id": "tenant-alpha", "name": "Alpha Basketball Cup", "season": "2026",
+     "sport_id": "basketball", "teams": ["club-alpha-1", "club-alpha-2"], "qualification_spots": 1,
+     "fixtures": [
+       {"match_id": "demo-a2-m1", "home": "club-alpha-2", "away": "club-alpha-1", "scheduled_at": "2026-10-20T15:00:00Z", "venue": "Hawk Ground"}
+     ], "demo_events": {}},
+    {"league_id": "league-beta-1", "tenant_id": "tenant-beta", "name": "Beta League", "season": "2026",
+     "sport_id": "football", "teams": ["club-beta-1", "club-beta-x"], "qualification_spots": 1,
+     "fixtures": [
+       {"match_id": "demo-b1-m1", "home": "club-beta-1", "away": "club-beta-x", "scheduled_at": "2026-10-21T15:00:00Z", "venue": "Titan Field"}
+     ], "demo_events": {}}
+  ],
+  "users": [
+    {"user_id": "user-admin", "email": "admin@nascon.test", "role": "super_admin", "tenant_id": null,
+     "display_name": "Platform Admin", "league_ids": [], "club_id": null, "player_id": null},
+    {"user_id": "user-organizer", "email": "organizer@nascon.test", "role": "league_organizer", "tenant_id": "tenant-alpha",
+     "display_name": "League Organizer", "league_ids": ["league-alpha-1"], "club_id": null, "player_id": null},
+    {"user_id": "user-manager", "email": "manager@nascon.test", "role": "club_manager", "tenant_id": "tenant-alpha",
+     "display_name": "Club Manager", "league_ids": [], "club_id": "club-alpha-1", "player_id": null},
+    {"user_id": "user-player", "email": "player@nascon.test", "role": "player", "tenant_id": "tenant-alpha",
+     "display_name": "Ali Hassan", "league_ids": [], "club_id": "club-alpha-1", "player_id": "player-alpha-1"},
+    {"user_id": "user-viewer", "email": "viewer@nascon.test", "role": "viewer", "tenant_id": "tenant-alpha",
+     "display_name": "Viewer", "league_ids": [], "club_id": null, "player_id": null}
+  ],
+  "demo_password": "Nascon@26",
+  "products": [
+    {"product_id": "prod-jersey-001", "tenant_id": "tenant-alpha", "club_id": "club-alpha-1", "name": "Alpha Falcons Home Jersey",
+     "type": "apparel", "image_url": "/static/jersey.png",
+     "variants": [{"variant_id": "var-jersey-001-M", "size": "M", "color": "blue", "price_minor": 450000},
+                  {"variant_id": "var-jersey-001-L", "size": "L", "color": "blue", "price_minor": 450000}]},
+    {"product_id": "prod-scarf-001", "tenant_id": "tenant-alpha", "club_id": "club-alpha-1", "name": "Falcons Scarf",
+     "type": "accessory", "image_url": "/static/scarf.png",
+     "variants": [{"variant_id": "var-scarf-001-STD", "size": "STD", "color": "blue", "price_minor": 150000}]},
+    {"product_id": "prod-wallpaper-001", "tenant_id": "tenant-alpha", "club_id": "club-alpha-1", "name": "Falcons Digital Wallpaper Pack",
+     "type": "digital", "image_url": "/static/wallpaper.png",
+     "variants": [{"variant_id": "var-wallpaper-001-HD", "size": "HD", "color": "multi", "price_minor": 25000}]}
+  ],
+  "default_stock": {"var-jersey-001-M": 1, "var-jersey-001-L": 5, "var-scarf-001-STD": 50, "var-wallpaper-001-HD": 1000},
+  "discount_codes": [{"code": "WELCOME10", "percent": 10}],
+  "roster_league": {
+    "league": {"league_id": "league-alpha-1", "tenant_id": "tenant-alpha", "sport_id": "football",
+               "transfer_window": {"open": "2026-09-01", "close": "2026-12-31"}, "max_squad_size": 25,
+               "required_positions": {"gk": 1}},
+    "squads": [{"squad_id": "club-alpha-1", "club_id": "club-alpha-1", "tenant_id": "tenant-alpha", "name": "Alpha Falcons"},
+               {"squad_id": "club-alpha-2", "club_id": "club-alpha-2", "tenant_id": "tenant-alpha", "name": "Alpha Hawks"},
+               {"squad_id": "club-alpha-3", "club_id": "club-alpha-3", "tenant_id": "tenant-alpha", "name": "Alpha Lions"},
+               {"squad_id": "club-alpha-4", "club_id": "club-alpha-4", "tenant_id": "tenant-alpha", "name": "Alpha Wolves"}],
+    "matches_in_progress": []
+  }
+}

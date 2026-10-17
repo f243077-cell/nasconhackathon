@@ -1,0 +1,10 @@
+# Dev only: exposes infra ports to teammates on the hotspot LAN.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+# Never rename to docker-compose.override.yml (compose auto-loads that name).
+services:
+  postgres:
+    ports: ["5432:5432"]
+  redis:
+    ports: ["6379:6379"]
+  minio:
+    ports: ["9000:9000", "9001:9001"]
