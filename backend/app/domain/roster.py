@@ -3,19 +3,14 @@
 Pure: no DB. A player's squad on any date is derived by replaying the setup squad plus
 the league's audit entries, so loans end by date and nothing is mutated in place.
 
-State shape (loaded by the repo layer for one league):
-    {
-      "league": {league_id, tenant_id, sport_id, transfer_window:{open, close}, max_squad_size, required_positions},
-      "squads": {squad_id: {squad_id, club_id, tenant_id, name}},
-      "players": {player_id: {player_id, name, position, squad_id, role}},   # as set up
-      "matches_in_progress": [{match_id, home_squad_id, away_squad_id}],
-      "audit": [entry, ...],          # this league's entries, insertion order; may hold private "_" keys
-      "audit_seq": int,               # entries already issued (global), next id = au-{audit_seq+1:04d}
-    }
-or None when the league does not exist.
+State shape: see repo/roster.py (AGREED_RULES section 3.4). Player records keep their setup
+squad; placement on a date is replayed from the audit list. Audit entries may carry
+private "_" keys (loan end date, which loan a return closes) that are never returned.
+Functions never mutate their input state; they return a new one.
 """
 from __future__ import annotations
 
+import copy
 import re
 from datetime import date, timedelta
 
@@ -66,6 +61,11 @@ def _members(state: dict, squad_id: str, on: date) -> list[str]:
     return [p for p in state["players"] if placement(state, p, on)[0] == squad_id]
 
 
+def validate_request(req) -> None:
+    """Step 1 only: 400 VALIDATION_ERROR."""
+    _validate(req)
+
+
 def _validate(req) -> tuple[date, date | None]:
     if not isinstance(req, dict):
         raise validation_error(["body"])
@@ -92,7 +92,7 @@ def _validate(req) -> tuple[date, date | None]:
 
 
 def check_and_apply(state: dict | None, req: dict, now_iso: str) -> tuple[dict, dict]:
-    """Returns (201 response body, mutations). Raises ApiError in the spec's 8-step order."""
+    """Returns (201 response body, new_state). Raises ApiError in the spec's 8-step order."""
     eff, end = _validate(req)                                                     # 1
     kind = req["type"]
     if state is None or state["league"]["league_id"] != req["league_id"]:         # 2
@@ -134,7 +134,7 @@ def check_and_apply(state: dict | None, req: dict, now_iso: str) -> tuple[dict, 
     blocking = next((m["match_id"] for m in state.get("matches_in_progress", [])
                      if frm in (m.get("home_squad_id"), m.get("away_squad_id"))), None)
     st = "deferred_until_match_end" if blocking else "active"
-    seq = state.get("audit_seq", 0) + 1
+    seq = state.get("next_audit_seq", 1)
     entry = {"audit_id": f"au-{seq:04d}", "action": kind, "player_id": pid, "league_id": lg["league_id"],
              "from_squad_id": frm, "to_squad_id": dst, "effective_date": req["effective_date"], "state": st,
              "who": req["requested_by"], "when": now_iso, "why": req["reason"]}
@@ -148,11 +148,14 @@ def check_and_apply(state: dict | None, req: dict, now_iso: str) -> tuple[dict, 
                         "loan_end_date": req["loan_end_date"] if kind == "loan" else None, "role": "substitute"}
     body = {"request_id": req["request_id"], "status": "accepted", "state": st, "blocking_match_id": blocking,
             "registration": registration, "audit_entry": public(entry)}
-    return body, {"append_audit": [entry], "audit_seq": seq}
+    new_state = copy.deepcopy(state)
+    new_state["audit"].append(entry)
+    new_state["next_audit_seq"] = seq + 1
+    return body, new_state
 
 
-def history(state: dict | None, player_id: str, as_of: str, now_iso: str = "") -> tuple[dict, list[dict]]:
-    """Returns (200 body, loan_return entries to persist). Each loan_return is written exactly once."""
+def history(state: dict | None, player_id: str, as_of: str, now_iso: str = "") -> tuple[dict, dict | None]:
+    """Returns (200 body, new_state). Each loan_return (who="system") is appended exactly once."""
     on = _date(as_of)
     if on is None:
         raise validation_error(["as_of"])
@@ -160,21 +163,26 @@ def history(state: dict | None, player_id: str, as_of: str, now_iso: str = "") -
         raise ApiError(404, "PLAYER_NOT_FOUND", "Unknown player", {"player_id": player_id})
     mine = [e for e in state["audit"] if e["player_id"] == player_id]
     returned = {e.get("_returns") for e in mine if e["action"] == "loan_return"}
-    seq = state.get("audit_seq", 0)
+    seq = state.get("next_audit_seq", 1)
     new = []
     for e in mine:
         if e["action"] != "loan" or e["audit_id"] in returned:
             continue
         back = date.fromisoformat(e["_loan_end_date"]) + timedelta(days=1)
         if on >= back:
-            seq += 1
             new.append({"audit_id": f"au-{seq:04d}", "action": "loan_return", "player_id": player_id,
                         "league_id": e["league_id"], "from_squad_id": e["to_squad_id"],
                         "to_squad_id": e["from_squad_id"], "effective_date": back.isoformat(), "state": "active",
                         "who": "system", "when": now_iso or f"{back.isoformat()}T00:00:00Z",
                         "why": "Loan ended", "_returns": e["audit_id"]})
-    current, parent = placement(state, player_id, on)
+            seq += 1
+    new_state = state
+    if new:
+        new_state = copy.deepcopy(state)
+        new_state["audit"] += new
+        new_state["next_audit_seq"] = seq
+    current, parent = placement(new_state, player_id, on)
     body = {"player_id": player_id, "as_of": as_of, "league_id": state["league"]["league_id"],
             "current_squad_id": current, "parent_squad_id": parent,
             "history": [public(e) for e in mine + new]}
-    return body, new
+    return body, new_state

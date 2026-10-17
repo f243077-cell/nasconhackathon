@@ -2,7 +2,7 @@ import copy
 
 import pytest
 
-from app.domain.roster import check_and_apply, history
+from app.domain.roster import check_and_apply, history, validate_request
 from app.errors import ApiError
 
 NOW = "2026-09-30T08:12:44Z"
@@ -22,7 +22,7 @@ def base_state():
                     "p4": {"player_id": "p4", "name": "Fwd2", "position": "fw", "squad_id": "sq-b", "role": "starter"}},
         "matches_in_progress": [],
         "audit": [],
-        "audit_seq": 0,
+        "next_audit_seq": 1,
     }
 
 
@@ -35,9 +35,12 @@ def req(**kw):
 
 
 def apply(state, r):
-    body, mut = check_and_apply(state, r, NOW)
-    state["audit"] += mut["append_audit"]
-    state["audit_seq"] = mut["audit_seq"]
+    before = copy.deepcopy(state)
+    body, new = check_and_apply(state, r, NOW)
+    assert state == before  # input never mutated
+    assert len(new["audit"]) == len(state["audit"]) + 1 and new["next_audit_seq"] == state["next_audit_seq"] + 1
+    state.clear()
+    state.update(new)
     return body
 
 
@@ -59,7 +62,7 @@ def test_transfer_response_exact():
                         "from_squad_id": "sq-a", "to_squad_id": "sq-b", "effective_date": "2026-09-30",
                         "state": "active", "who": "user-77", "when": NOW, "why": "Tactical move"}}
     h, new = history(s, "p2", "2026-10-01")
-    assert h["current_squad_id"] == "sq-b" and h["parent_squad_id"] is None and new == []
+    assert h["current_squad_id"] == "sq-b" and h["parent_squad_id"] is None and new is s
     assert [e["audit_id"] for e in h["history"]] == ["au-0001"]
 
 
@@ -76,16 +79,17 @@ def test_loan_and_auto_return_once():
     reg = body["registration"]
     assert reg["registration_type"] == "loan" and reg["parent_squad_id"] == "sq-a" and reg["loan_end_date"] == "2026-10-15"
     h, new = history(s, "p2", "2026-10-15")
-    assert h["current_squad_id"] == "sq-b" and h["parent_squad_id"] == "sq-a" and new == []
+    assert h["current_squad_id"] == "sq-b" and h["parent_squad_id"] == "sq-a" and new is s
     h, new = history(s, "p2", "2026-10-16", NOW)
     assert h["current_squad_id"] == "sq-a" and h["parent_squad_id"] is None
-    assert len(new) == 1 and new[0]["who"] == "system" and new[0]["action"] == "loan_return"
+    ret = h["history"][-1]
+    assert ret["who"] == "system" and ret["action"] == "loan_return" and ret["audit_id"] == "au-0002"
+    assert ret["from_squad_id"] == "sq-b" and ret["to_squad_id"] == "sq-a" and ret["effective_date"] == "2026-10-16"
     assert [e["action"] for e in h["history"]] == ["loan", "loan_return"]
     assert all(not k.startswith("_") for e in h["history"] for k in e)
-    s["audit"] += new
-    s["audit_seq"] += len(new)
-    h2, new2 = history(s, "p2", "2026-11-01")
-    assert new2 == [] and [e["action"] for e in h2["history"]] == ["loan", "loan_return"]
+    assert len(new["audit"]) == 2 and new["next_audit_seq"] == 3 and len(s["audit"]) == 1
+    h2, new2 = history(new, "p2", "2026-11-01")
+    assert new2 is new and [e["action"] for e in h2["history"]] == ["loan", "loan_return"]
 
 
 def test_loan_counts_toward_borrower_not_lender():
@@ -164,3 +168,20 @@ def test_history_errors():
     assert pytest.raises(ApiError, history, base_state(), "p99", "2026-10-01").value.code == "PLAYER_NOT_FOUND"
     assert pytest.raises(ApiError, history, None, "p1", "2026-10-01").value.code == "PLAYER_NOT_FOUND"
     assert pytest.raises(ApiError, history, base_state(), "p1", "bad").value.code == "VALIDATION_ERROR"
+
+
+def test_validate_request_step1_only():
+    validate_request(req())
+    with pytest.raises(ApiError) as e:
+        validate_request(req(effective_date="nope"))
+    assert e.value.code == "VALIDATION_ERROR" and e.value.details == {"fields": ["effective_date"]}
+
+
+def test_state_from_repo_shape():
+    s = base_state()
+    for p in s["players"].values():
+        p.update(parent_squad_id=None, registration_type="initial", start_date=None, loan_end_date=None)
+    body = apply(s, req())
+    assert body["audit_entry"]["audit_id"] == "au-0001" and s["next_audit_seq"] == 2
+    body = apply(s, req(request_id="tr-2", player_id="p3", from_squad_id="sq-b", to_squad_id="sq-a"))
+    assert body["audit_entry"]["audit_id"] == "au-0002"
