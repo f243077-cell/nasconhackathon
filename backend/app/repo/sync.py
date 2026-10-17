@@ -77,6 +77,15 @@ def _process_roster(conn, action, order) -> dict:
     return _result(action, "applied", resolution, None, order, after)
 
 
+def _current_version(conn, action) -> int:
+    payload = action["payload"]
+    if action["type"] == "score_event":
+        mid = payload.get("match_id")
+        return events_repo.match_version(conn, mid) if is_id(mid) else 0
+    pid = payload.get("player_id")
+    return (roster_repo.player_audit_count(conn, pid) or 0) if is_id(pid) else 0
+
+
 def offline_sync(conn, body) -> dict:
     validate_envelope(body)
     device_id = body["device_id"]
@@ -88,8 +97,7 @@ def offline_sync(conn, body) -> dict:
         prev = conn.execute("SELECT result FROM sync_actions WHERE device_id = %s AND action_id = %s",
                             (device_id, action["action_id"])).fetchone()
         if prev:
-            stored = json.loads(prev["result"])
-            res = _result(action, "duplicate", "skipped_duplicate", None, n, stored.get("server_version", 0))
+            res = _result(action, "duplicate", "skipped_duplicate", None, n, _current_version(conn, action))
         elif action["type"] == "score_event":
             res = _process_score(conn, action, n)
         else:

@@ -3,7 +3,6 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .coverage
-coverage.json
 htmlcov/
 .venv/
 venv/
@@ -17,3 +16,4 @@ mobile/.flutter-plugins-dependencies
 mobile/android/.gradle/
 mobile/android/local.properties
 !mobile/release/app-release.apk
+!COVERAGE.json

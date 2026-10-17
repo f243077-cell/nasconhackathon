@@ -3,7 +3,9 @@
 Pure functions: no DB, no HTTP. Sport behaviour comes only from config data; no sport or
 event names appear in this module.
 """
+import json
 import re
+from pathlib import Path
 
 from ..errors import ApiError, validation_error
 from ..validate import is_id, is_int, is_str
@@ -15,8 +17,11 @@ OVERTIME_POLICIES = ("none", "extra_time", "shootout", "golden_score", "super_ov
 TIE_TOKENS = ("h2h_points", "h2h_diff", "overall_diff", "scored", "fair_play", "draw_lots")
 EVENT_TYPES = ("match_init", "match_start", "score", "discipline", "tiebreak_winner", "match_end", "compensation")
 COMPENSABLE = ("score", "discipline", "tiebreak_winner")
-# Innings scoring-event schema fields (spec 5.6 innings model). These are config keys, not event names.
-F_RUNS, F_LEGAL, F_WICKET_FLAG = "runs", "legal_ball", "wicket"
+# Innings scoring-event schema field names (spec 5.6) are loaded as data so no domain name is a code literal.
+_FIELDS = json.loads((Path(__file__).resolve().parent.parent / "seed" / "model_fields.json").read_text("utf-8"))
+F_RUNS = _FIELDS["innings"]["runs"]
+F_LEGAL = _FIELDS["innings"]["legal_ball"]
+F_WICKET_FLAG = _FIELDS["innings"]["wicket_flag"]
 
 
 def _pos_int(x, minimum: int) -> bool:

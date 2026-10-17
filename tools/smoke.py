@@ -219,6 +219,7 @@ def main():
     check("sync a4 not found", res[3]["error_code"] == "MATCH_NOT_FOUND", res[3])
     r2 = call("POST", "/audit/v1/offline-sync", sync)[1]
     check("sync resend all duplicate", r2["summary"] == {"applied": 0, "rejected": 0, "duplicate": 4}, r2["summary"])
+    check("duplicate reports current version", r2["results"][0]["server_version"] == 3, r2["results"][0])
 
     # ---- roster (Gunee domain + repo wiring)
     call("POST", "/audit/v1/reset")
