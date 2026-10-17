@@ -171,19 +171,44 @@ Write each handler in exactly that order. For roster, follow the 8-step order in
 # domain/fixtures/__init__.py
 def generate(body: dict) -> dict:      # full /audit/v1/fixtures request body -> exact response body; raises ApiError
 
-# domain/standings.py
+# domain/standings.py   (wired in routes/audit.py -> compute_standings)
 def compute(league: dict, sport: dict, matches: list[dict]) -> dict:
-    # league  = {"league_id","sport_id","teams","points":{win,draw,loss},"tie_break_order":[...],"qualification_spots":k,"lots_seed":int}
-    # sport   = stored sport config (scoring_model, periods, ...)
-    # matches = one dict per fixture: the /score projection shape (status, outcome, home{team_id,score,balls,wickets,fair_play}, away{...})
+    # league  = {"league_id","sport_id","teams":[...],"fixtures":[{match_id,home,away}],
+    #            "points":{"win","draw","loss"},"tie_break_order":[...] (draw_lots may be absent -> apply last),
+    #            "qualification_spots":k,"lots_seed":int}
+    # sport   = stored sport config (sport_id, scoring_model, periods{balls_per_over, overs_per_innings,
+    #           wickets_per_innings,...}, scoring_events, draw_allowed, ...)
+    # matches = one dict per fixture, in fixture order: the exact GET /audit/v1/score projection:
+    #           {match_id, status, outcome, winner_team_id, tiebreak_winner_team_id,
+    #            home:{team_id,score,wickets,balls,overs,fair_play}, away:{...}, version, events}
+    #           A match counts as played only if status=="completed" and outcome!="undecided".
     # returns the exact /standings response body
 
-# domain/roster.py
+# domain/roster.py   (wired in repo/roster.py; the routes answer 501 until these three exist)
+def validate_request(req) -> None:
+    # step 1 only: 400 VALIDATION_ERROR (schema, dates, loan_end_date > effective_date, to_squad unless release)
 def check_and_apply(state: dict, req: dict, now_iso: str) -> tuple[dict, dict]:
-    # state = league roster state loaded by repo (league, squads, registrations, loans, matches_in_progress, audit count)
-    # returns (response_body, mutations) ; raises ApiError in the 8-step order
-def history(state: dict, player_id: str, as_of: str) -> tuple[dict, list[dict]]:
-    # returns (response_body, new_loan_return_entries_to_persist)  — loan_return written once only
+    # steps 2-8 in exact order (404 PLAYER/SQUAD_NOT_FOUND, 409 ...); returns (response_body, new_state)
+    # must append exactly one audit entry to new_state["audit"] and bump new_state["next_audit_seq"]
+def history(state: dict, player_id: str, as_of: str) -> tuple[dict, dict]:
+    # returns (response_body, new_state). Append the loan_return entry (who="system") once only.
+    # Tanzeel saves new_state only if it differs from state.
+```
+The repo layer handles request_id idempotency (it stores the 2xx response and replays it with 200) and the league-not-found 404. Gunee's functions never see a replay.
+
+**Roster `state` shape** (one JSON blob per league, row-locked while in use, built by `/roster/setup`):
+```python
+{
+  "league": {"league_id", "tenant_id", "sport_id", "transfer_window": {"open", "close"},
+             "max_squad_size": int, "required_positions": {pos: min}},     # defaults already filled from the sport
+  "squads": {squad_id: {"squad_id", "club_id", "tenant_id", "name"}},
+  "players": {player_id: {"player_id", "name", "position", "squad_id": str|None, "parent_squad_id": str|None,
+              "role", "registration_type": "initial"|"transfer"|"loan"|"release",
+              "start_date": str|None, "loan_end_date": str|None}},
+  "matches_in_progress": [{"match_id", "home_squad_id", "away_squad_id"}],
+  "audit": [audit_entry, ...],      # oldest first, append-only
+  "next_audit_seq": int             # audit_id = f"au-{seq:04d}"
+}
 ```
 Tanzeel's repo layer loads and saves the state. Gunee's functions take no DB handle, so all of them can be unit-tested without Docker.
 

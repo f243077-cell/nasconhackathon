@@ -1,0 +1,21 @@
+# Traceability Matrix
+
+Each owner keeps their own rows up to date.
+- **Unit tests** are in `tests/unit/` and run with `./run_tests.sh`.
+- **Integration checks** are in `tools/smoke.py` and run against the live stack.
+
+| ID | Requirement | Source files | Automated tests | Owner |
+|---|---|---|---|---|
+| FR-1.1 | Multi-sport taxonomy as data, mystery sport, event-sourced scoring, signed compensation | `backend/app/seed/sports.json`, `backend/app/domain/scoring.py`, `backend/app/repo/events.py`, `backend/app/repo/leagues.py` (`create_sport`), `backend/app/canonical.py`, `backend/app/routes/audit.py` | `tests/unit/test_scoring.py`, `tests/unit/test_canonical.py`, `tools/smoke.py` (sports, events, score, cricket) | Tanzeel |
+| FR-1.2 | League and tournament setup scoped to seasons | `backend/app/repo/leagues.py` (`register_league`), `backend/app/seed/baseline.json` | `tools/smoke.py` (leagues) | Tanzeel |
+| FR-1.3 | Fixture scheduling: round-robin, Swiss, single and double elimination | `backend/app/domain/fixtures/*.py` | `tests/unit/test_fixtures_round_robin.py`, `tests/unit/test_fixtures_swiss.py`, `tests/unit/test_fixtures_elim.py` | Gunee |
+| FR-1.3 | Match status state machine and realtime broadcast | `backend/app/domain/scoring.py` (`check_append`), `backend/app/services/bus.py`, `backend/app/routes/ws.py` | `tests/unit/test_scoring.py::test_state_machine_rules` | Tanzeel |
+| FR-1.4 | Standings, tie-breakers, H2H, qualification status | `backend/app/domain/standings.py` (Gunee), `backend/app/routes/audit.py` (`compute_standings`) | `tests/unit/test_standings.py` | Gunee |
+| FR-2.1 | Club profiles and tenant isolation | `backend/app/routes/api_v1.py` (`/clubs`), `backend/app/auth/policy.py`, `backend/app/seed/baseline.json` | `tests/unit/test_rbac_policy.py` | Tanzeel |
+| FR-2.2 | Roster: transfer, loan, release, windows, audit trail | `backend/app/domain/roster.py` (Gunee), `backend/app/repo/roster.py` | `tests/unit/test_roster_rules.py` | Gunee / Tanzeel |
+| FR-2.3 | Merchandise store, mock gateway, PDF receipt, domain events, product pin | `backend/app/domain/store.py`, `backend/app/repo/store.py`, `backend/app/services/payments.py`, `backend/app/services/receipts.py`, `backend/app/worker.py`, `backend/app/routes/api_v1.py` (`/pin`) | `tests/unit/test_store_domain.py`, `tools/smoke.py` (checkout) | Tanzeel |
+| FR-5.1 | Five-tier RBAC, policy-as-code, negative tests | `backend/app/auth/policy.py`, `backend/app/auth/jwt_tokens.py`, `backend/app/routes/rbac.py` | `tests/unit/test_rbac_policy.py`, `tools/smoke.py` (rbac matrix) | Tanzeel |
+| NFR-3 | Concurrency: 20 buyers on the last unit | `backend/app/repo/store.py` (`checkout`), `backend/app/db.py` (`CHECK stock >= 0`) | `tools/smoke.py` (20-thread barrier burst) | Tanzeel |
+| NFR-4 | Offline cache, queue and sync with conflict handling | `backend/app/repo/sync.py`, `mobile/lib/data/` | `tools/smoke.py` (offline sync) | Tanzeel / Huzaifa |
+| NFR-5 | Security: JWT verification, rate limit, input validation, 413 | `backend/app/main.py`, `backend/app/validate.py`, `backend/app/auth/*` | `tests/unit/test_rbac_policy.py`, `tools/smoke.py` (401/413/429, injection) | Tanzeel |
+| NFR-7 | Reproducible one-command stack with auto-seed | `docker-compose.yml`, `backend/Dockerfile`, `backend/app/bootstrap.py`, `backend/app/repo/seed.py` | `tools/smoke.py` (reset idempotent, health) | Tanzeel |
