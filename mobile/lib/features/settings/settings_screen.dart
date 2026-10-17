@@ -1,19 +1,21 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config.dart';
 import '../../core/theme.dart';
+import '../../data/sync_queue.dart';
 import '../../widgets/async_view.dart';
 import '../../widgets/ui.dart';
 
-class SettingsScreen extends StatefulWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
   @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _url = TextEditingController();
   bool _testing = false;
   bool? _reachable;
@@ -51,6 +53,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _save() async {
     await ServerConfig.save(_url.text);
+    ref.read(syncProvider.notifier).recheck(); // new server: re-test reachability and flush the queue
     if (mounted) showSuccess(context, 'Server address saved.');
   }
 

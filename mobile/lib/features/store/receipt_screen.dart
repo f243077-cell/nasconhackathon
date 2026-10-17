@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
@@ -9,23 +10,22 @@ import 'package:path_provider/path_provider.dart';
 import '../../core/format.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
+import '../../data/repository.dart';
 import '../../widgets/async_view.dart';
 import '../../widgets/ui.dart';
 
-class ReceiptScreen extends StatelessWidget {
+class ReceiptScreen extends ConsumerWidget {
   final Order order;
   const ReceiptScreen({super.key, required this.order});
 
-  Future<void> _openPdf(BuildContext context) async {
-    final b64 = order.pdfBase64;
-    if (b64 == null) {
-      showSuccess(context, 'The PDF receipt is not available yet.');
-      return;
-    }
+  /// Uses the PDF from the checkout response, else downloads it from the server.
+  Future<void> _openPdf(BuildContext context, WidgetRef ref) async {
     try {
+      final b64 = order.pdfBase64;
+      final bytes = b64 != null ? base64Decode(b64) : await ref.read(repositoryProvider).receiptPdf(order.orderId);
       final dir = await getApplicationDocumentsDirectory();
       final file = File('${dir.path}/receipt_${order.orderId}.pdf');
-      await file.writeAsBytes(base64Decode(b64));
+      await file.writeAsBytes(bytes);
       final result = await OpenFilex.open(file.path);
       if (result.type != ResultType.done && context.mounted) {
         showSuccess(context, 'Receipt saved. Install a PDF viewer to open it.');
@@ -36,7 +36,7 @@ class ReceiptScreen extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final t = Theme.of(context).textTheme;
     final p = context.palette;
     String money(int v) => formatMoney(v, currency: order.currency);
@@ -45,7 +45,7 @@ class ReceiptScreen extends StatelessWidget {
         TextButton(onPressed: () => context.go('/store'), child: const Text('Done', style: TextStyle(fontWeight: FontWeight.w600))),
       ]),
       bottomNavigationBar: BottomActionBar(children: [
-        PrimaryButton(label: 'Open PDF Receipt', icon: Icons.description_rounded, onPressed: () => _openPdf(context)),
+        PrimaryButton(label: 'Open PDF Receipt', icon: Icons.description_rounded, onPressed: () => _openPdf(context, ref)),
       ]),
       body: ListView(padding: const EdgeInsets.only(bottom: 24), children: [
         Padding(

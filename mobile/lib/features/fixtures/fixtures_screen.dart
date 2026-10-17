@@ -30,6 +30,11 @@ class FixturesScreen extends ConsumerWidget {
       },
       slivers: [
         LeagueScoped(builder: (context, league) {
+          // Live scores and status changes arrive over the WebSocket; no polling.
+          ref.listen(liveUpdatesProvider, (_, next) {
+            final type = next.value?['type'];
+            if (type == 'match_update' || type == 'match_status') ref.invalidate(fixturesProvider(league.leagueId));
+          });
           final fixtures = ref.watch(fixturesProvider(league.leagueId));
           return AsyncSliver<List<Fixture>>(
             value: fixtures,

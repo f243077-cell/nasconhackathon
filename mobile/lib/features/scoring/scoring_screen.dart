@@ -53,10 +53,10 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
           return AsyncView<List<Fixture>>(
             value: fixtures,
             onRetry: () => ref.invalidate(fixturesProvider(league.leagueId)),
-            isEmpty: (l) => l.every((f) => f.status == 'completed'),
+            isEmpty: (l) => !l.any((f) => _scorable.contains(f.status)),
             emptyMessage: 'No live or upcoming matches to score',
             builder: (all) {
-              final open = all.where((f) => f.status != 'completed').toList();
+              final open = all.where((f) => _scorable.contains(f.status)).toList();
               return ListView(padding: const EdgeInsets.only(top: 12, bottom: 32), children: [
                 Section(header: 'Match', children: [
                   for (final f in open)
@@ -84,6 +84,7 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
                     busy: _busy,
                     onTeamChanged: (home) => setState(() => _homeSelected = home),
                     onSubmit: _submit,
+                    onStatus: _changeStatus,
                   ),
               ]);
             },
@@ -91,6 +92,37 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
         },
       ),
     );
+  }
+
+  static const _scorable = {'upcoming', 'in_progress', 'postponed'};
+
+  /// FR-1.3 status change (postpone / abandon / cancel / back to upcoming). Online only:
+  /// the offline queue carries score events and roster moves, not schedule changes.
+  Future<void> _changeStatus(MatchDetail match, String to) async {
+    final verb = _statusVerbs[to] ?? humanize(to);
+    final ok = await confirmAction(
+      context,
+      title: '$verb this match?',
+      message: switch (to) {
+        'upcoming' => 'The match goes back on the schedule as upcoming.',
+        'postponed' => 'Fans will see the match as postponed until it is rescheduled.',
+        _ => 'This can’t be undone. The match won’t count in the standings.',
+      },
+      confirmLabel: verb,
+      destructive: to == 'cancelled' || to == 'abandoned',
+    );
+    if (!ok || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      await ref.read(repositoryProvider).setMatchStatus(match.matchId, to);
+      ref.invalidate(matchProvider(match.matchId));
+      ref.invalidate(fixturesProvider);
+      if (mounted) showSuccess(context, 'Match ${_statusDone[to] ?? humanize(to).toLowerCase()}.');
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   /// Sends one §7.6 event. Offline: queues it as a §7.11 score_event with the last seen version.
@@ -120,6 +152,7 @@ class _MatchScoring extends ConsumerWidget {
   final bool busy;
   final ValueChanged<bool> onTeamChanged;
   final Future<void> Function(MatchDetail, String, Map<String, dynamic>, String) onSubmit;
+  final Future<void> Function(MatchDetail, String to) onStatus;
 
   const _MatchScoring({
     required this.matchId,
@@ -127,6 +160,7 @@ class _MatchScoring extends ConsumerWidget {
     required this.busy,
     required this.onTeamChanged,
     required this.onSubmit,
+    required this.onStatus,
   });
 
   @override
@@ -173,13 +207,25 @@ class _MatchScoring extends ConsumerWidget {
                     OutlinedButton(
                       onPressed: busy
                           ? null
-                          : () => onSubmit(m, 'score', {'team_id': team.teamId, 'event_type': type},
-                              '${humanize(type)} added for ${team.name}.'),
-                      child: Text(humanize(type)),
+                          : () => onSubmit(m, 'score', {'team_id': team.teamId, 'event_type': type.key},
+                              '${type.label} added for ${team.name}.'),
+                      child: Text(type.label),
                     ),
                 ]),
               ),
             ),
+            // Level score in a sport without draws: the shootout / super-over winner settles it.
+            if (m.home.score == m.away.score)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: SecondaryButton(
+                  label: '${team.name} Won the Tiebreak',
+                  icon: Icons.emoji_events_rounded,
+                  onPressed: busy
+                      ? null
+                      : () => onSubmit(m, 'tiebreak_winner', {'team_id': team.teamId}, 'Tiebreak winner: ${team.name}.'),
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
               child: SecondaryButton(
@@ -196,6 +242,21 @@ class _MatchScoring extends ConsumerWidget {
               ),
             ),
           ],
+          if (m.statusTargets.isNotEmpty)
+            Section(
+              header: 'Match Status',
+              footer: 'Needs a connection. Postponed matches can be put back on the schedule later.',
+              children: [
+                for (final to in m.statusTargets)
+                  ListTile(
+                    title: Text(_statusVerbs[to] ?? humanize(to),
+                        style: TextStyle(
+                            color: to == 'cancelled' || to == 'abandoned' ? context.palette.danger : context.palette.accent)),
+                    enabled: !busy,
+                    onTap: () => onStatus(m, to),
+                  ),
+              ],
+            ),
           Section(
             header: 'Events',
             footer: 'Correct adds a new event that cancels the old one. The original stays in the log.',
@@ -243,3 +304,6 @@ class _MatchScoring extends ConsumerWidget {
     await onSubmit(m, 'compensation', {'compensates': e.eventId, 'reason': text.isEmpty ? 'Correction' : text}, 'Correction added.');
   }
 }
+
+const _statusVerbs = {'postponed': 'Postpone', 'abandoned': 'Abandon', 'cancelled': 'Cancel', 'upcoming': 'Reschedule'};
+const _statusDone = {'postponed': 'postponed', 'abandoned': 'abandoned', 'cancelled': 'cancelled', 'upcoming': 'rescheduled'};

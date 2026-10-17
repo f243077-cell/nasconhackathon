@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/errors.dart';
 import '../../core/format.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
@@ -68,7 +69,7 @@ class RosterScreen extends ConsumerWidget {
       context: context,
       builder: (ctx) => CupertinoActionSheet(
         title: Text(player.name),
-        message: Text('${humanize(player.role)}, ${player.position}'),
+        message: Text([humanize(player.role), player.position, if (player.onLoan) 'On loan'].join(', ')),
         actions: [
           CupertinoActionSheetAction(onPressed: () => Navigator.pop(ctx, 'transfer'), child: const Text('Transfer')),
           CupertinoActionSheetAction(onPressed: () => Navigator.pop(ctx, 'loan'), child: const Text('Loan')),
@@ -77,15 +78,28 @@ class RosterScreen extends ConsumerWidget {
             onPressed: () => Navigator.pop(ctx, 'release'),
             child: const Text('Release'),
           ),
+          CupertinoActionSheetAction(onPressed: () => Navigator.pop(ctx, 'history'), child: const Text('History')),
         ],
         cancelButton: CupertinoActionSheetAction(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
       ),
     );
-    if (type != null && context.mounted) await _startAction(context, ref, session, player, type);
+    if (type == null || !context.mounted) return;
+    if (type == 'history') {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        builder: (_) => PlayerHistorySheet(player: player),
+      );
+      return;
+    }
+    await _startAction(context, ref, session, player, type);
   }
 
   Future<void> _startAction(BuildContext context, WidgetRef ref, Session session, RosterPlayer player, String type) async {
-    final leagueId = session.user.leagueId ?? ref.read(selectedLeagueProvider) ?? '';
+    // Warm the history cache while the form is open: its length is the offline base_version.
+    ref.read(rosterHistoryProvider(player.playerId).future).ignore();
+    final leagueId = player.leagueId ?? session.user.leagueId ?? ref.read(selectedLeagueProvider) ?? '';
     final body = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
@@ -113,14 +127,26 @@ class RosterScreen extends ConsumerWidget {
 
     final sync = ref.read(syncProvider.notifier);
     if (ref.read(syncProvider).isOffline) {
-      // TODO(data layer): base_version = the player's audit entry count from cached roster history.
-      await sync.enqueue(type: 'roster_transfer', baseVersion: 0, payload: body);
+      // §7.11: base_version = the player's audit entry count (from the cached history).
+      var baseVersion = 0;
+      try {
+        baseVersion = (await ref.read(repositoryProvider).rosterHistory(player.playerId)).entries.length;
+      } catch (_) {
+        // never opened online: 0 is never ahead of the server, so it rebases instead of failing
+      }
+      await sync.enqueue(type: 'roster_transfer', baseVersion: baseVersion, payload: body);
       if (context.mounted) showSuccess(context, 'Saved. It will sync when you’re back online.');
       return;
     }
     try {
-      await ref.read(repositoryProvider).rosterTransfer(body);
+      final res = await ref.read(repositoryProvider).rosterTransfer(body);
       ref.invalidate(clubProvider(session.user.clubId!));
+      ref.invalidate(squadsProvider(leagueId));
+      ref.invalidate(rosterHistoryProvider(player.playerId));
+      if (res['state'] == 'deferred_until_match_end') {
+        if (context.mounted) showSuccess(context, '${player.name}: $verb accepted. It takes effect after the current match.');
+        return;
+      }
       if (context.mounted) showSuccess(context, '${player.name}: $verb complete.');
     } catch (e) {
       if (context.mounted) showError(context, e);
@@ -254,6 +280,55 @@ class _RosterActionSheetState extends ConsumerState<RosterActionSheet> {
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
         ]),
       ),
+    );
+  }
+}
+
+/// The player's immutable roster audit trail (newest first).
+class PlayerHistorySheet extends ConsumerWidget {
+  final RosterPlayer player;
+  const PlayerHistorySheet({super.key, required this.player});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final history = ref.watch(rosterHistoryProvider(player.playerId));
+    final squads = player.leagueId == null ? null : ref.watch(squadsProvider(player.leagueId!)).value;
+    final names = {for (final s in squads ?? const <Map<String, dynamic>>[]) s['squad_id']: '${s['name']}'};
+    String squad(String? id) => id == null ? 'No squad' : (names[id] ?? id);
+    final t = Theme.of(context).textTheme;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.only(bottom: 24),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(32, 0, 32, 20),
+          child: Text('${player.name}: History', style: t.headlineSmall),
+        ),
+        history.when(
+          loading: () => const Padding(padding: EdgeInsets.all(24), child: LoadingView()),
+          error: (e, _) => ErrorView(
+            message: friendlyError(e),
+            onRetry: () => ref.invalidate(rosterHistoryProvider(player.playerId)),
+          ),
+          data: (h) => Section(
+            footer: 'Every change is recorded and never edited.',
+            children: h.entries.isEmpty
+                ? [const ListTile(title: Text('No moves yet'))]
+                : [
+                    for (final e in h.entries.reversed)
+                      ListTile(
+                        title: Text(humanize(e.action)),
+                        subtitle: Text([
+                          if (e.fromSquadId != null || e.toSquadId != null)
+                            '${squad(e.fromSquadId)} → ${squad(e.toSquadId)}',
+                          if ((e.why ?? '').isNotEmpty) e.why!,
+                          'by ${e.who}',
+                        ].join('\n')),
+                        trailing: Text(e.effectiveDate, style: t.bodyMedium!.copyWith(fontFeatures: tabular)),
+                      ),
+                  ],
+          ),
+        ),
+      ]),
     );
   }
 }

@@ -124,7 +124,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   child: PrimaryButton(label: 'Sign In', loading: _loading, onPressed: _submit),
                 ),
                 const SizedBox(height: 32),
-                // TODO: remove once the real backend is wired.
+                // Seeded accounts (backend/app/seed/baseline.json), shown for judges and testing.
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 32),
                   child: Text(
