@@ -68,10 +68,10 @@ def _brute_min(players, score, played):
     return best
 
 
-@pytest.mark.parametrize("trial", range(60))
+@pytest.mark.parametrize("trial", range(300))
 def test_min_cost_matches_brute_force(trial):
     rng = random.Random(trial)
-    n = rng.choice([4, 6, 8, 10])
+    n = rng.choice([2, 4, 6, 8, 10, 12])
     ps = teams(n)
     score = {t: rng.randint(0, 6) for t in ps}
     played = {frozenset(pr) for pr in itertools.combinations(ps, 2) if rng.random() < 0.35}
@@ -106,7 +106,15 @@ def test_full_tournament_properties(n):
     total = min(n - 1, 6)
     hist = []
     for r in range(1, total + 1):
-        out = sw(n, round=r, total_rounds=total, history=hist)
+        try:
+            out = sw(n, round=r, total_rounds=total, history=hist)
+        except ApiError as e:  # only acceptable when truly impossible (checked by brute force)
+            assert e.code == "NO_VALID_PAIRING" and n <= 12
+            played = {frozenset((m["home"], m["away"])) for h in hist for m in h["matches"]}
+            cands = [None] if n % 2 == 0 else [t for t in teams(n) if t not in {h["bye"] for h in hist}]
+            assert all(_brute_min([t for t in teams(n) if t != c], {t: 0 for t in teams(n)}, played) is None
+                       for c in cands)
+            break
         _check_pairing_props(out, hist, n)
         if n % 2:
             assert out["bye"] not in {h["bye"] for h in hist}

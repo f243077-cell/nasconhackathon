@@ -1,7 +1,7 @@
 """Swiss pairing, one round per call (FR-1.3).
 
 Round 1 is the exact fold (seed i vs seed i+m). Later rounds find a rematch-free
-pairing with the minimum sum of |score diff| by memoised branch-and-bound, which is
+pairing with the minimum sum of |score diff| by Edmonds' blossom matching, which is
 exact (greedy is not). Scores are doubled internally so all arithmetic is integer.
 """
 from __future__ import annotations
@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 
 from app.domain.fixtures import validate as v
+from app.domain.fixtures.matching import max_weight_matching
 from app.errors import ApiError, validation_error
 
 RESULTS = ("home", "away", "draw")
@@ -69,59 +70,18 @@ def _scores(teams: list[str], history: list[dict]):
 def _min_cost_pairing(players: list[str], score: dict, played: set) -> list[tuple[str, str]] | None:
     """Exact min sum |score diff| perfect matching avoiding `played` pairs; None if impossible.
 
-    Players are re-sorted by score (stable) so the adjacent-pairs lower bound holds.
+    Max-cardinality max-weight blossom matching with weight = BIG - diff, so cardinality
+    wins first and, among perfect matchings, total diff is minimal.
     """
     players = sorted(players, key=lambda t: -score[t])
     n = len(players)
-    allowed = [[j for j in range(n) if j != i and frozenset((players[i], players[j])) not in played]
-               for i in range(n)]
-    for i in range(n):
-        allowed[i].sort(key=lambda j: (abs(score[players[i]] - score[players[j]]), j))
-    diff = [[abs(score[players[i]] - score[players[j]]) for j in range(n)] for i in range(n)]
-    INF = float("inf")
-    exact: dict[int, tuple] = {}
-    lower: dict[int, float] = {}
-
-    def bound(mask: int) -> float:
-        """Rematch-free optimum >= unconstrained optimum = adjacent pairs in score order."""
-        idx = [i for i in range(n) if mask >> i & 1]
-        for i in idx:
-            if not any(mask >> j & 1 for j in allowed[i]):
-                return INF
-        return sum(diff[idx[k]][idx[k + 1]] for k in range(0, len(idx), 2))
-
-    def solve(mask: int, budget: float):
-        if mask == 0:
-            return 0, ()
-        if mask in exact:
-            c, pairs = exact[mask]
-            return (c, pairs) if c < budget else (INF, None)
-        lb = bound(mask)
-        if lower.get(mask, 0) >= budget or lb >= budget:
-            return INF, None
-        i = (mask & -mask).bit_length() - 1
-        best, best_pairs, limit = INF, None, budget
-        for j in allowed[i]:
-            if not mask >> j & 1:
-                continue
-            c = diff[i][j]
-            if c >= limit:
-                continue
-            sub, sub_pairs = solve(mask & ~(1 << i) & ~(1 << j), limit - c)
-            if sub_pairs is not None and c + sub < best:
-                best, best_pairs, limit = c + sub, ((i, j),) + sub_pairs, c + sub
-                if best <= lb:
-                    break
-        if best_pairs is not None:
-            exact[mask] = (best, best_pairs)
-            return best, best_pairs
-        lower[mask] = max(lower.get(mask, 0), budget)
-        return INF, None
-
-    _, pairs = solve((1 << n) - 1, INF)
-    if pairs is None:
+    big = max(score.values(), default=0) * 2 + 1
+    edges = [(i, j, big - abs(score[players[i]] - score[players[j]]))
+             for i in range(n) for j in range(i + 1, n) if frozenset((players[i], players[j])) not in played]
+    mate = max_weight_matching(n, edges, max_cardinality=True)
+    if any(m == -1 for m in mate):
         return None
-    return [(players[i], players[j]) for i, j in pairs]
+    return [(players[i], players[mate[i]]) for i in range(n) if i < mate[i]]
 
 
 def generate(body: dict) -> dict:
