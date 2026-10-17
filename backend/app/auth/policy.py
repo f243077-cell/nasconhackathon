@@ -18,6 +18,8 @@ POLICY: dict[str, dict[str, str]] = {
     "league.read": {r: "same_tenant" for r in ROLES if r != "super_admin"},
     "store.checkout": {r: "same_tenant" for r in ROLES if r != "super_admin"},
     "match.pin": {"league_organizer": "own_league", "club_manager": "same_tenant"},
+    "match.status.write": {"league_organizer": "own_league"},
+    "order.manage": {"club_manager": "own_club"},
     "platform.config.read": {},
 }
 

@@ -4,7 +4,7 @@ import json
 
 from ..canonical import canonical, sign
 from ..domain import store as store_domain
-from ..errors import ApiError
+from ..errors import ApiError, validation_error
 from ..services import bus, payments, receipts
 from ..validate import now_iso
 
@@ -30,7 +30,7 @@ def checkout(conn, body) -> tuple[int, dict]:
     items = body["items"]
     ids = [it["variant_id"] for it in items]
     rows = conn.execute(
-        "SELECT v.variant_id, v.price_minor, p.tenant_id FROM variants v JOIN products p ON p.product_id = v.product_id "
+        "SELECT v.variant_id, v.price_minor, p.tenant_id, p.club_id FROM variants v JOIN products p ON p.product_id = v.product_id "
         "WHERE v.variant_id = ANY(%s)", (ids,),
     ).fetchall()
     found = {r["variant_id"]: r for r in rows}
@@ -90,15 +90,62 @@ def checkout(conn, body) -> tuple[int, dict]:
                     "pdf_base64": base64.b64encode(pdf).decode("ascii")},
     }
     conn.execute(
-        "INSERT INTO orders (order_id, request, status, customer_id, total_minor, response, pdf, created_at) "
-        "VALUES (%s, %s, 'paid', %s, %s, %s, %s, %s)",
-        (body["order_id"], canonical(body), body["customer_id"], total, json.dumps(response), pdf, now),
+        "INSERT INTO orders (order_id, request, status, customer_id, total_minor, response, pdf, created_at, "
+        "tenant_id, club_id, capture_id) VALUES (%s, %s, 'paid', %s, %s, %s, %s, %s, %s, %s, %s)",
+        (body["order_id"], canonical(body), body["customer_id"], total, json.dumps(response), pdf, now,
+         found[ids[0]]["tenant_id"], found[ids[0]]["club_id"], cap_id),
     )
     conn.execute("INSERT INTO order_status_log (order_id, status, at) VALUES (%s, 'pending', %s), (%s, 'paid', %s)",
                  (body["order_id"], now, body["order_id"], now))
     bus.emit_domain_event("order.status_changed", {"order_id": body["order_id"], "from": "pending", "to": "paid",
                                                    "total_minor": total, "at": now})
     return 201, response
+
+
+def get_order(conn, order_id: str, lock: bool = False) -> dict:
+    row = conn.execute(
+        "SELECT order_id, status, customer_id, total_minor, tenant_id, club_id, capture_id, request, created_at "
+        "FROM orders WHERE order_id = %s" + (" FOR UPDATE" if lock else ""), (order_id,)).fetchone()
+    if not row:
+        raise ApiError(404, "ORDER_NOT_FOUND", "Order not found", {"order_id": order_id})
+    return row
+
+
+def order_view(conn, order_id: str) -> dict:
+    row = get_order(conn, order_id)
+    log = conn.execute("SELECT status, at FROM order_status_log WHERE order_id = %s ORDER BY id",
+                       (order_id,)).fetchall()
+    return {"order_id": row["order_id"], "status": row["status"], "customer_id": row["customer_id"],
+            "total_minor": row["total_minor"], "currency": "PKR", "club_id": row["club_id"],
+            "created_at": row["created_at"], "status_history": log}
+
+
+def transition_order(conn, order_id: str, body) -> dict:
+    """FR-2.3: Paid -> Packed -> Shipped -> Delivered, Cancelled/Refunded. Each transition emits a domain event.
+
+    Refund or cancel after payment refunds the capture and puts the stock back.
+    """
+    if not isinstance(body, dict) or body.get("to") not in store_domain.ORDER_TRANSITIONS:
+        raise validation_error(["to"], "to must be a valid order status")
+    row = get_order(conn, order_id, lock=True)
+    current, target = row["status"], body["to"]
+    if not store_domain.can_transition(current, target):
+        raise ApiError(409, "ILLEGAL_TRANSITION", f"Cannot move an order from {current} to {target}",
+                       {"from": current, "to": target})
+    now = now_iso()
+    refund_id = None
+    if target in ("refunded", "cancelled") and current != "pending":
+        refund_id = payments.refund(row["capture_id"] or "", row["total_minor"])
+        for it in json.loads(row["request"])["items"]:
+            conn.execute("UPDATE inventory SET stock = stock + %s WHERE variant_id = %s",
+                         (it["quantity"], it["variant_id"]))
+    conn.execute("UPDATE orders SET status = %s WHERE order_id = %s", (target, order_id))
+    conn.execute("INSERT INTO order_status_log (order_id, status, at) VALUES (%s, %s, %s)", (order_id, target, now))
+    bus.emit_domain_event("order.status_changed", {"order_id": order_id, "from": current, "to": target,
+                                                   "refund_id": refund_id, "at": now})
+    view = order_view(conn, order_id)
+    view["refund_id"] = refund_id
+    return view
 
 
 def after_commit_store_pdf(response: dict) -> None:

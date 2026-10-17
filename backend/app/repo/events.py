@@ -55,9 +55,9 @@ def find_event(conn, event_id: str) -> dict | None:
     return row
 
 
-def append_event(conn, body) -> tuple[int, dict]:
+def append_event(conn, body, allow_internal: bool = False) -> tuple[int, dict]:
     """POST /audit/v1/events. Returns (http_status, response). Raises ApiError."""
-    scoring.validate_event_request(body)
+    scoring.validate_event_request(body, allow_internal)
     req_canon = canonical(body)
 
     existing = find_event(conn, body["event_id"])
@@ -104,7 +104,7 @@ def append_event(conn, body) -> tuple[int, dict]:
         "event_id": body["event_id"], "match_id": match_id, "type": etype,
         "sequence": sequence, "match_version": sequence, "signature": signature,
     }
-    msg_type = "match_status" if etype in ("match_start", "match_end") else "match_update"
+    msg_type = "match_status" if etype in ("match_start", "match_end", scoring.STATUS_CHANGE) else "match_update"
     bus.publish_realtime(msg_type, match_id, {"event_id": body["event_id"], "type": etype, "version": sequence})
     return 201, resp
 

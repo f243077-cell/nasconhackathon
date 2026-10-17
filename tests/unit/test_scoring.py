@@ -234,3 +234,31 @@ def test_compensation_rules():
     done = events + [ev(3, "c", "compensation", {"compensates": "e2"})]
     assert errcode(scoring.check_append, MATCH, EVENT_SPORT, done, "compensation", {"compensates": "e2"},
                    target) == "INVALID_COMPENSATION"
+
+
+# ---------------------------------------------------------------- FR-1.3 extended match statuses
+
+def test_status_change_not_accepted_on_audit_contract():
+    body = {"event_id": "e", "match_id": "m", "type": "status_change", "payload": {"to": "postponed"}}
+    assert errcode(scoring.validate_event_request, body) == "VALIDATION_ERROR"
+    scoring.validate_event_request(body, allow_internal=True)
+    bad = dict(body, payload={"to": "completed"})
+    assert errcode(scoring.validate_event_request, bad, True) == "VALIDATION_ERROR"
+    bad = dict(body, payload={"to": "postponed", "reason": 5})
+    assert errcode(scoring.validate_event_request, bad, True) == "VALIDATION_ERROR"
+
+
+def test_match_state_machine_transitions():
+    post = [ev(1, "p", "status_change", {"to": "postponed"})]
+    assert scoring.project(MATCH, EVENT_SPORT, post)["status"] == "postponed"
+    assert errcode(scoring.check_append, MATCH, EVENT_SPORT, post, "match_start", {}) == "ILLEGAL_TRANSITION"
+    assert errcode(scoring.check_append, MATCH, EVENT_SPORT, post, "score",
+                   {"team_id": "A", "event_type": "raid_point"}) == "MATCH_NOT_IN_PROGRESS"
+    scoring.check_append(MATCH, EVENT_SPORT, post, "status_change", {"to": "upcoming"})
+    scoring.check_append(MATCH, EVENT_SPORT, started(), "status_change", {"to": "abandoned"})
+    cancelled = [ev(1, "c", "status_change", {"to": "cancelled"})]
+    for to in ("upcoming", "postponed", "abandoned"):
+        assert errcode(scoring.check_append, MATCH, EVENT_SPORT, cancelled, "status_change",
+                       {"to": to}) == "ILLEGAL_TRANSITION"
+    assert errcode(scoring.check_append, MATCH, EVENT_SPORT, [], "status_change",
+                   {"to": "abandoned"}) == "ILLEGAL_TRANSITION"

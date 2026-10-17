@@ -1,5 +1,6 @@
 """Production API for the mobile app (/api/v1/*, JWT, rate-limited). Reuses the audit code paths."""
 import json
+import uuid
 from datetime import date
 
 from fastapi import APIRouter, Depends, Header
@@ -16,7 +17,7 @@ from ..repo import sync as sync_repo
 from ..repo.seed import verify_password
 from ..services import bus
 from ..domain import roster as roster_domain
-from ..validate import is_id, is_str, today_iso
+from ..validate import is_id, is_str, is_ts, today_iso
 from .audit import compute_standings
 from .common import json_body, respond, run_tx
 from .rbac import load_user
@@ -319,3 +320,53 @@ def pin_product(match_id: str, body=Depends(json_body), p: dict = Depends(princi
         conn.execute("UPDATE matches SET pinned_product_id = %s WHERE match_id = %s", (body["product_id"], match_id))
     bus.publish_realtime("product_pinned", match_id, {"product": product})
     return {"match_id": match_id, "pinned_product": product}
+
+
+@router.post("/matches/{match_id}/status")
+def match_status(match_id: str, body=Depends(json_body), p: dict = Depends(principal)):
+    """FR-1.3: organizer postpones / abandons / cancels / reschedules a match (state machine, signed event)."""
+    if not isinstance(body, dict):
+        raise validation_error(["body"], "Body must be a JSON object")
+    with tx() as conn:
+        match = events_repo.get_match(conn, match_id)
+        if match is None:
+            raise ApiError(404, "MATCH_NOT_FOUND", "Match not found", {"match_id": match_id})
+        lg = leagues_repo.get_league(conn, match["league_id"]) if match["league_id"] else None
+        require(p, "match.status.write", {"tenant_id": lg["tenant_id"] if lg else None,
+                                          "league_id": match["league_id"]})
+    if "scheduled_at" in body and body["scheduled_at"] is not None and not is_ts(body["scheduled_at"]):
+        raise validation_error(["scheduled_at"], "scheduled_at must be YYYY-MM-DDTHH:MM:SSZ")
+    payload = {"to": body.get("to")}
+    if "reason" in body:
+        payload["reason"] = body["reason"]
+    event = {"event_id": body.get("event_id") or f"{match_id}-st-{uuid.uuid4().hex[:10]}", "match_id": match_id,
+             "type": "status_change", "payload": payload}
+
+    def apply(conn):
+        status, resp = events_repo.append_event(conn, event, allow_internal=True)
+        if body.get("to") == "upcoming" and (body.get("scheduled_at") or body.get("venue")):
+            conn.execute("UPDATE matches SET scheduled_at = COALESCE(%s, scheduled_at), venue = COALESCE(%s, venue) "
+                         "WHERE match_id = %s", (body.get("scheduled_at"), body.get("venue"), match_id))
+        return status, resp
+
+    status, resp = run_tx(apply)
+    resp["status"] = body["to"]
+    return respond(status, resp)
+
+
+@router.get("/orders/{order_id}")
+def order_detail(order_id: str, p: dict = Depends(principal)):
+    with tx() as conn:
+        order = store_repo.get_order(conn, order_id)
+        if order["tenant_id"]:
+            require(p, "store.checkout", {"tenant_id": order["tenant_id"]})
+        return store_repo.order_view(conn, order_id)
+
+
+@router.post("/orders/{order_id}/status")
+def order_status(order_id: str, body=Depends(json_body), p: dict = Depends(principal)):
+    """FR-2.3: club manager moves an order Paid -> Packed -> Shipped -> Delivered, or Cancelled / Refunded."""
+    with tx() as conn:
+        order = store_repo.get_order(conn, order_id)
+        require(p, "order.manage", {"tenant_id": order["tenant_id"], "club_id": order["club_id"]})
+    return respond(200, run_tx(store_repo.transition_order, order_id, body))

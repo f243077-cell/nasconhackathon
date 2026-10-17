@@ -273,6 +273,32 @@ def main():
     s, sq, _ = call("GET", "/api/v1/leagues/league-alpha-1/squads", token=tok)
     check("league squads", s == 200 and len(sq["squads"]) == 4 and sq["squads"][0]["player_count"] == 3, sq)
     check("league squads foreign 403", call("GET", "/api/v1/leagues/league-beta-1/squads", token=tok)[0] == 403)
+    check("audit rejects status_change", code(call("POST", "/audit/v1/events", {"event_id": "x1", "match_id": "demo-a1-m4",
+          "type": "status_change", "payload": {"to": "postponed"}})) == "VALIDATION_ERROR")
+    org = call("POST", "/api/v1/auth/login", {"email": "organizer@nascon.test", "password": "Nascon@26"})[1]["token"]
+    check("manager cannot postpone 403", call("POST", "/api/v1/matches/demo-a1-m4/status", {"to": "postponed"}, tok)[0] == 403)
+    r = call("POST", "/api/v1/matches/demo-a1-m4/status", {"to": "postponed", "reason": "Rain"}, org)
+    check("postpone 201", r[0] == 201 and r[1]["status"] == "postponed", r)
+    check("start postponed 409", code(call("POST", "/audit/v1/events", ev("x2", "match_start", {}, "demo-a1-m4"))) == "ILLEGAL_TRANSITION")
+    r = call("POST", "/api/v1/matches/demo-a1-m4/status", {"to": "upcoming", "scheduled_at": "2026-11-01T14:00:00Z"}, org)
+    check("reschedule 201", r[0] == 201 and call("GET", "/api/v1/matches/demo-a1-m4", token=org)[1]["scheduled_at"] == "2026-11-01T14:00:00Z", r)
+    call("POST", "/api/v1/matches/demo-a1-m4/status", {"to": "cancelled"}, org)
+    check("cancelled terminal 409", code(call("POST", "/api/v1/matches/demo-a1-m4/status", {"to": "upcoming"}, org)) == "ILLEGAL_TRANSITION")
+    check("score status in projection", call("GET", "/audit/v1/score/demo-a1-m4")[1]["status"] == "cancelled")
+    buy = {"order_id": "app-ord-1", "customer_id": "user-manager", "items": [{"variant_id": "var-scarf-001-STD", "quantity": 2}],
+           "discount_code": None, "payment": {"token": "tok_success"}}
+    check("app checkout 201", call("POST", "/api/v1/checkout", buy, tok)[0] == 201)
+    for to in ("packed", "shipped", "delivered"):
+        r = call("POST", "/api/v1/orders/app-ord-1/status", {"to": to}, tok)
+        check(f"order -> {to}", r[0] == 200 and r[1]["status"] == to, r)
+    check("order illegal 409", code(call("POST", "/api/v1/orders/app-ord-1/status", {"to": "packed"}, tok)) == "ILLEGAL_TRANSITION")
+    viewer = call("POST", "/api/v1/auth/login", {"email": "viewer@nascon.test", "password": "Nascon@26"})[1]["token"]
+    check("viewer cannot manage order 403", call("POST", "/api/v1/orders/app-ord-1/status", {"to": "refunded"}, viewer)[0] == 403)
+    r = call("POST", "/api/v1/orders/app-ord-1/status", {"to": "refunded"}, tok)
+    check("refund restocks", r[0] == 200 and r[1]["refund_id"] and
+          call("GET", "/audit/v1/inventory/var-scarf-001-STD")[1]["stock"] == 50, r)
+    hist = call("GET", "/api/v1/orders/app-ord-1", token=tok)[1]
+    check("order history", [h["status"] for h in hist["status_history"]] == ["pending", "paid", "packed", "shipped", "delivered", "refunded"], hist)
     check("api needs token 401", call("GET", "/api/v1/leagues/league-alpha-1/squads")[0] == 401)
 
     print(f"\n{len(FAILS)} failure(s)")

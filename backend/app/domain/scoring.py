@@ -16,6 +16,19 @@ MODELS = ("event", "innings", "round")
 OVERTIME_POLICIES = ("none", "extra_time", "shootout", "golden_score", "super_over")
 TIE_TOKENS = ("h2h_points", "h2h_diff", "overall_diff", "scored", "fair_play", "draw_lots")
 EVENT_TYPES = ("match_init", "match_start", "score", "discipline", "tiebreak_winner", "match_end", "compensation")
+# FR-1.3 extended statuses. Only the organizer route (/api/v1/matches/{id}/status) appends these;
+# the graded /audit/v1/events contract above is unchanged.
+STATUS_CHANGE = "status_change"
+MATCH_TRANSITIONS = {
+    "upcoming": {"in_progress", "postponed", "cancelled"},
+    "in_progress": {"completed", "abandoned", "postponed"},
+    "postponed": {"upcoming", "cancelled"},
+    "completed": set(),
+    "abandoned": set(),
+    "cancelled": set(),
+}
+# Targets reachable through status_change (in_progress/completed only via match_start/match_end).
+STATUS_CHANGE_TARGETS = ("postponed", "abandoned", "cancelled", "upcoming")
 COMPENSABLE = ("score", "discipline", "tiebreak_winner")
 # Innings scoring-event schema field names (spec 5.6) are loaded as data so no domain name is a code literal.
 _FIELDS = json.loads((Path(__file__).resolve().parent.parent / "seed" / "model_fields.json").read_text("utf-8"))
@@ -129,7 +142,7 @@ def effective_tie_break(order: list[str]) -> list[str]:
 
 # ---------------------------------------------------------------- event payload validation
 
-def validate_event_request(body) -> None:
+def validate_event_request(body, allow_internal: bool = False) -> None:
     """Schema-level (400) checks for POST /events. Match-dependent checks happen later."""
     if not isinstance(body, dict):
         raise validation_error(["body"], "Body must be a JSON object")
@@ -139,7 +152,7 @@ def validate_event_request(body) -> None:
     if not is_id(body.get("match_id")):
         bad.append("match_id")
     etype = body.get("type")
-    if etype not in EVENT_TYPES:
+    if etype not in EVENT_TYPES and not (allow_internal and etype == STATUS_CHANGE):
         bad.append("type")
     payload = body.get("payload")
     if not isinstance(payload, dict):
@@ -168,6 +181,11 @@ def validate_event_request(body) -> None:
     elif etype == "tiebreak_winner":
         if not is_id(payload.get("team_id")):
             bad.append("payload.team_id")
+    elif etype == STATUS_CHANGE:
+        if payload.get("to") not in STATUS_CHANGE_TARGETS:
+            bad.append("payload.to")
+        if "reason" in payload and not isinstance(payload["reason"], str):
+            bad.append("payload.reason")
     elif etype == "compensation":
         if not is_id(payload.get("compensates")):
             bad.append("payload.compensates")
@@ -207,6 +225,9 @@ def project(match: dict, sport: dict, events: list[dict]) -> dict:
             continue
         if t == "match_end":
             status = "completed"
+            continue
+        if t == STATUS_CHANGE:
+            status = e["payload"]["to"]
             continue
         if t not in COMPENSABLE or e["event_id"] in compensated_by:
             continue
@@ -305,6 +326,9 @@ def check_append(match: dict, sport: dict, events: list[dict], etype: str, paylo
             _check_model_limits(sport, proj, payload["team_id"], match)
         return
 
+    if etype == STATUS_CHANGE:
+        check_status_change(status, payload["to"])
+        return
     if etype == "match_init":
         raise ApiError(409, "MATCH_EXISTS", "Match stream already exists", {"match_id": match["match_id"]})
     if etype == "match_start":
@@ -330,6 +354,13 @@ def check_append(match: dict, sport: dict, events: list[dict], etype: str, paylo
             raise ApiError(409, "INVALID_COMPENSATION", "Event cannot be compensated",
                            {"event_id": payload["compensates"]})
         return
+
+
+def check_status_change(current: str, target: str) -> None:
+    """FR-1.3 state machine: illegal transitions are rejected server-side (409 ILLEGAL_TRANSITION)."""
+    if target not in MATCH_TRANSITIONS.get(current, set()):
+        raise ApiError(409, "ILLEGAL_TRANSITION", f"Cannot move a match from {current} to {target}",
+                       {"from": current, "to": target})
 
 
 def _check_model_limits(sport: dict, proj: dict, team_id: str, match: dict) -> None:
