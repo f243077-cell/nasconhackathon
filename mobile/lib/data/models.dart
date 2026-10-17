@@ -3,17 +3,17 @@
 // back to ids when the backend does not send them.
 
 class Tenant {
-  final String tenantId;
+  final String? tenantId; // null for the platform admin
   final String name;
   final String? logoUrl;
   final String? primaryColor;
   final String? secondaryColor;
 
-  Tenant({required this.tenantId, required this.name, this.logoUrl, this.primaryColor, this.secondaryColor});
+  Tenant({this.tenantId, required this.name, this.logoUrl, this.primaryColor, this.secondaryColor});
 
   factory Tenant.fromJson(Map<String, dynamic> j) => Tenant(
         tenantId: j['tenant_id'],
-        name: j['name'],
+        name: j['name'] ?? 'NaSCon',
         logoUrl: j['logo_url'],
         primaryColor: j['primary_color'],
         secondaryColor: j['secondary_color'],
@@ -106,6 +106,8 @@ class Fixture {
     this.awayScore,
   });
 
+  bool get hasScore => status == 'in_progress' || status == 'completed';
+
   factory Fixture.fromJson(Map<String, dynamic> j) => Fixture(
         matchId: j['match_id'],
         home: j['home'],
@@ -193,7 +195,20 @@ class MatchDetail {
     required this.version,
     required this.events,
     this.pinnedProduct,
+    this.scheduledAt,
+    this.venue,
   });
+
+  final String? scheduledAt;
+  final String? venue;
+
+  /// Status changes the organizer may make (FR-1.3 state machine, mirrors the backend).
+  List<String> get statusTargets => const {
+        'upcoming': ['postponed', 'cancelled'],
+        'in_progress': ['abandoned', 'postponed'],
+        'postponed': ['upcoming', 'cancelled'],
+      }[status] ??
+      const [];
 
   factory MatchDetail.fromJson(Map<String, dynamic> j) => MatchDetail(
         matchId: j['match_id'],
@@ -207,6 +222,8 @@ class MatchDetail {
         version: j['version'] ?? 0,
         events: [for (final e in (j['events'] as List? ?? [])) MatchEvent.fromJson(e)],
         pinnedProduct: j['pinned_product'] == null ? null : Product.fromJson(j['pinned_product']),
+        scheduledAt: j['scheduled_at'],
+        venue: j['venue'],
       );
 
   String teamName(String? teamId) => teamId == home.teamId ? home.name : (teamId == away.teamId ? away.name : (teamId ?? ''));
@@ -235,10 +252,10 @@ class StandingRow {
     required this.status,
   });
 
-  factory StandingRow.fromJson(Map<String, dynamic> j) => StandingRow(
+  factory StandingRow.fromJson(Map<String, dynamic> j, [Map<String, String> names = const {}]) => StandingRow(
         rank: j['rank'],
         teamId: j['team_id'],
-        teamName: j['team_name'] ?? j['team_id'],
+        teamName: j['team_name'] ?? names[j['team_id']] ?? j['team_id'],
         played: j['played'],
         won: j['won'],
         drawn: j['drawn'],
@@ -259,11 +276,12 @@ class Standings {
 
   Standings({required this.leagueId, required this.sportId, required this.qualificationSpots, required this.table});
 
-  factory Standings.fromJson(Map<String, dynamic> j) => Standings(
+  /// [names] maps team_id to a display name; the standings table itself only carries ids.
+  factory Standings.fromJson(Map<String, dynamic> j, [Map<String, String> names = const {}]) => Standings(
         leagueId: j['league_id'],
         sportId: j['sport_id'],
         qualificationSpots: j['qualification_spots'] ?? 0,
-        table: [for (final r in (j['table'] as List)) StandingRow.fromJson(r)],
+        table: [for (final r in (j['table'] as List)) StandingRow.fromJson(Map<String, dynamic>.from(r), names)],
       );
 }
 
@@ -273,11 +291,76 @@ class RosterPlayer {
   final String position;
   final String role;
   final String squadId;
+  final String? parentSquadId; // set while on loan: the lending squad
+  final String? leagueId; // roster league this registration belongs to
 
-  RosterPlayer({required this.playerId, required this.name, required this.position, required this.role, required this.squadId});
+  RosterPlayer({
+    required this.playerId,
+    required this.name,
+    required this.position,
+    required this.role,
+    required this.squadId,
+    this.parentSquadId,
+    this.leagueId,
+  });
 
-  factory RosterPlayer.fromJson(Map<String, dynamic> j) =>
-      RosterPlayer(playerId: j['player_id'], name: j['name'], position: j['position'], role: j['role'], squadId: j['squad_id']);
+  bool get onLoan => parentSquadId != null;
+
+  factory RosterPlayer.fromJson(Map<String, dynamic> j) => RosterPlayer(
+        playerId: j['player_id'],
+        name: j['name'],
+        position: j['position'] ?? '',
+        role: j['role'] ?? 'substitute',
+        squadId: j['squad_id'] ?? '',
+        parentSquadId: j['parent_squad_id'],
+        leagueId: j['league_id'],
+      );
+}
+
+/// One immutable roster audit entry (§7.8).
+class RosterAuditEntry {
+  final String action; // transfer | loan | release | loan_return
+  final String? fromSquadId;
+  final String? toSquadId;
+  final String effectiveDate;
+  final String who;
+  final String? why;
+
+  RosterAuditEntry({required this.action, this.fromSquadId, this.toSquadId, required this.effectiveDate, required this.who, this.why});
+
+  factory RosterAuditEntry.fromJson(Map<String, dynamic> j) => RosterAuditEntry(
+        action: j['action'],
+        fromSquadId: j['from_squad_id'],
+        toSquadId: j['to_squad_id'],
+        effectiveDate: j['effective_date'] ?? '',
+        who: j['who'] ?? '',
+        why: j['why'],
+      );
+}
+
+/// GET roster/history: the player's squad today plus the full audit trail (oldest first).
+class RosterHistory {
+  final String playerId;
+  final String? currentSquadId;
+  final List<RosterAuditEntry> entries;
+
+  RosterHistory({required this.playerId, this.currentSquadId, required this.entries});
+
+  factory RosterHistory.fromJson(Map<String, dynamic> j) => RosterHistory(
+        playerId: j['player_id'],
+        currentSquadId: j['current_squad_id'],
+        entries: [for (final e in (j['history'] as List? ?? [])) RosterAuditEntry.fromJson(Map<String, dynamic>.from(e))],
+      );
+}
+
+/// A scoring button from the sport config (works for mystery sports).
+class EventType {
+  final String key;
+  final String label;
+
+  EventType({required this.key, required this.label});
+
+  factory EventType.fromJson(Map<String, dynamic> j) => EventType(key: j['key'], label: j['label'] ?? j['key']);
 }
 
 class Club {

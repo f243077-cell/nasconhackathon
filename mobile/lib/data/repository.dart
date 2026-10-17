@@ -1,14 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/session.dart';
-import 'mock_repository.dart';
+import 'api_repository.dart';
 import 'models.dart';
 
 /// The ONE contract the UI talks to. Screens never call dio/sqflite directly.
 ///
-/// Today it is backed by [MockRepository]. The real `ApiRepository`
-/// (dio + sqflite cache-first, AGREED_RULES §4/§5) implements the same interface;
-/// swap it in [repositoryProvider] and no screen needs to change.
+/// Backed by [ApiRepository]: the real /api/v1 backend with an sqflite cache (AGREED_RULES §4/§5).
 abstract class AppRepository {
   Future<Session> login(String email, String password);
   Future<List<League>> leagues();
@@ -32,17 +30,26 @@ abstract class AppRepository {
 
   Future<void> pinProduct(String matchId, String productId);
 
-  /// Scoring buttons come from the sport config, never hard-coded. (Needs a backend route.)
-  Future<List<String>> eventTypes(String sportId);
+  /// FR-1.3: postpone / abandon / cancel / reschedule (to: upcoming). Organizer only.
+  Future<void> setMatchStatus(String matchId, String to, {String? reason});
 
-  /// Squads in a league, for the transfer destination picker. (Needs a backend route.)
+  /// Scoring buttons come from the sport config, never hard-coded.
+  Future<List<EventType>> eventTypes(String sportId);
+
+  /// Squads in a league with their current players, for the transfer destination picker.
   Future<List<Map<String, dynamic>>> squads(String leagueId);
+
+  /// Player's audit trail; its length is the base_version of an offline roster action.
+  Future<RosterHistory> rosterHistory(String playerId);
+
+  /// Server-generated PDF receipt (used when the checkout response had no pdf_base64).
+  Future<List<int>> receiptPdf(String orderId);
 
   /// WS /api/v1/ws messages: {type: match_update|match_status|product_pinned, match_id, data}.
   Stream<Map<String, dynamic>> liveUpdates();
 }
 
-final repositoryProvider = Provider<AppRepository>((ref) => MockRepository());
+final repositoryProvider = Provider<AppRepository>(ApiRepository.new);
 
 // ---- Read providers used by the screens ----
 
@@ -67,10 +74,13 @@ final productProvider = FutureProvider.family<Product, String>((ref, productId) 
 });
 
 final eventTypesProvider =
-    FutureProvider.family<List<String>, String>((ref, sportId) => ref.watch(repositoryProvider).eventTypes(sportId));
+    FutureProvider.family<List<EventType>, String>((ref, sportId) => ref.watch(repositoryProvider).eventTypes(sportId));
 
 final squadsProvider = FutureProvider.family<List<Map<String, dynamic>>, String>(
     (ref, leagueId) => ref.watch(repositoryProvider).squads(leagueId));
+
+final rosterHistoryProvider = FutureProvider.family<RosterHistory, String>(
+    (ref, playerId) => ref.watch(repositoryProvider).rosterHistory(playerId));
 
 final liveUpdatesProvider =
     StreamProvider<Map<String, dynamic>>((ref) => ref.watch(repositoryProvider).liveUpdates());
