@@ -265,6 +265,14 @@ def main():
     # ---- mobile API
     s, lg, _ = call("POST", "/api/v1/auth/login", {"email": "manager@nascon.test", "password": "Nascon@26"})
     check("login", s == 200 and lg["role"] == "club_manager", lg)
+    tok = lg["token"]
+    s, et, _ = call("GET", "/api/v1/sports/cricket/event-types", token=tok)
+    check("sport event types", s == 200 and any(e["key"] == "wicket" and e["wicket"] is True for e in et["event_types"]), et)
+    check("sport event types 404", call("GET", "/api/v1/sports/nope/event-types", token=tok)[0] == 404)
+    s, sq, _ = call("GET", "/api/v1/leagues/league-alpha-1/squads", token=tok)
+    check("league squads", s == 200 and len(sq["squads"]) == 4 and sq["squads"][0]["player_count"] == 3, sq)
+    check("league squads foreign 403", call("GET", "/api/v1/leagues/league-beta-1/squads", token=tok)[0] == 403)
+    check("api needs token 401", call("GET", "/api/v1/leagues/league-alpha-1/squads")[0] == 401)
 
     print(f"\n{len(FAILS)} failure(s)")
     sys.exit(1 if FAILS else 0)

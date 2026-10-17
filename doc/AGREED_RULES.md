@@ -270,6 +270,8 @@ UPDATE inventory SET reserved = reserved - :q WHERE variant_id = :v;
 | `GET /api/v1/leagues` | none | `[{league_id, name, sport_id, season}]` (tenant-scoped) |
 | `GET /api/v1/leagues/{id}/fixtures` | none | `[{match_id, home, away, home_name, away_name, status, scheduled_at, venue}]` |
 | `GET /api/v1/standings/{league_id}` | none | Same as `/audit/v1/standings` |
+| `GET /api/v1/sports/{sport_id}/event-types` | none | `{sport_id, name, scoring_model, event_types:[{key, label, points\|runs+legal_ball+wicket\|rounds}]}`. These are the scoring buttons and work for mystery sports. |
+| `GET /api/v1/leagues/{league_id}/squads` | none | `{league_id, transfer_window:{open,close}, max_squad_size, squads:[{squad_id, club_id, name, player_count, players:[{player_id, name, position, role, on_loan_from}]}]}`. This feeds the transfer picker, and players are listed in their current squad. |
 | `GET /api/v1/matches/{id}` | none | Same as `/audit/v1/score`, plus `pinned_product` (product or null) |
 | `GET /api/v1/clubs/{id}` | none | `{club_id, name, tenant_id, venue:{name, lat, lng}, socials:{}, staff:[{name, role}], roster:[{player_id, name, position, role, squad_id}], stats:[{season, played, won, drawn, lost}]}` |
 | `GET /api/v1/products` | `?club_id=` | `[{product_id, name, type, image_url, variants:[{variant_id, size, color, price_minor, stock}]}]` |

@@ -113,6 +113,44 @@ def league_fixtures(league_id: str, p: dict = Depends(principal)):
     return out
 
 
+@router.get("/sports/{sport_id}/event-types")
+def sport_event_types(sport_id: str, p: dict = Depends(principal)):
+    """Scoring buttons for the organizer screen, straight from the sport config (works for mystery sports)."""
+    with tx() as conn:
+        sport = events_repo.get_sport(conn, sport_id)
+    if sport is None:
+        raise ApiError(404, "SPORT_NOT_FOUND", "Sport not found", {"sport_id": sport_id})
+    types = [dict({"key": key, "label": key.replace("_", " ").title()}, **cfg)
+             for key, cfg in sport["scoring_events"].items()]
+    return {"sport_id": sport["sport_id"], "name": sport["name"], "scoring_model": sport["scoring_model"],
+            "event_types": types}
+
+
+@router.get("/leagues/{league_id}/squads")
+def league_squads(league_id: str, p: dict = Depends(principal)):
+    """Transfer picker: squads of a league with their current players (derived from the roster audit log)."""
+    with tx() as conn:
+        _scoped_league(conn, p, league_id)
+        state = roster_repo.load_state(conn, league_id)
+    if state is None:
+        return {"league_id": league_id, "transfer_window": None, "squads": []}
+    today = date.fromisoformat(today_iso())
+    members: dict[str, list] = {sid: [] for sid in state["squads"]}
+    for pl in state["players"].values():
+        squad_id, parent = roster_domain.placement(state, pl["player_id"], today)
+        if squad_id in members:
+            members[squad_id].append({"player_id": pl["player_id"], "name": pl["name"], "position": pl["position"],
+                                      "role": pl["role"], "on_loan_from": parent})
+    return {
+        "league_id": league_id,
+        "transfer_window": state["league"]["transfer_window"],
+        "max_squad_size": state["league"]["max_squad_size"],
+        "squads": [{"squad_id": s["squad_id"], "club_id": s["club_id"], "name": s["name"],
+                    "player_count": len(members[s["squad_id"]]), "players": members[s["squad_id"]]}
+                   for s in state["squads"].values()],
+    }
+
+
 @router.get("/standings/{league_id}")
 def standings(league_id: str, p: dict = Depends(principal)):
     with tx() as conn:
