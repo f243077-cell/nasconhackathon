@@ -8,11 +8,12 @@ import '../../data/models.dart';
 import '../../data/repository.dart';
 import '../../widgets/async_view.dart';
 import '../../widgets/league_picker.dart';
-import '../../widgets/status_chip.dart';
+import '../../widgets/team_crest.dart';
 import '../../widgets/tenant_title.dart';
 import '../../widgets/ui.dart';
 
-/// Fixtures grouped by what matters now: Live, then Upcoming, then Results.
+/// Fixtures grouped Live / Upcoming / Results. Every match is one line
+/// "[crest] Home  vs  [crest] Away" that expands in place into a face-off view.
 class FixturesScreen extends ConsumerWidget {
   const FixturesScreen({super.key});
 
@@ -45,7 +46,14 @@ class FixturesScreen extends ConsumerWidget {
               ];
               return SliverList.list(children: [
                 for (final (title, items) in groups)
-                  if (items.isNotEmpty) Section(header: title, children: [for (final f in items) MatchRow(fixture: f)]),
+                  if (items.isNotEmpty)
+                    Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
+                        child: Semantics(header: true, child: Text(title, style: Theme.of(context).textTheme.titleLarge)),
+                      ),
+                      Section(dividerIndent: 0, children: [for (final f in items) MatchRow(fixture: f)]),
+                    ]),
               ]);
             },
           );
@@ -55,43 +63,141 @@ class FixturesScreen extends ConsumerWidget {
   }
 }
 
-/// Two stacked team names on the left, status and kick-off on the right.
-class MatchRow extends StatelessWidget {
+/// Collapsed: one line, crest + name on each side, "vs" (or the score) in the middle.
+/// Tapped: drops down into crests at full size, names below them, a big VS/score between,
+/// with the kick-off details and a button into the match.
+class MatchRow extends StatefulWidget {
   final Fixture fixture;
   const MatchRow({super.key, required this.fixture});
 
   @override
+  State<MatchRow> createState() => _MatchRowState();
+}
+
+class _MatchRowState extends State<MatchRow> {
+  bool _open = false;
+
+  @override
   Widget build(BuildContext context) {
-    final f = fixture;
+    final f = widget.fixture;
     final t = Theme.of(context).textTheme;
     final p = context.palette;
-    return Semantics(
-      button: true,
-      label: '${f.homeName} versus ${f.awayName}, ${formatDateTime(f.scheduledAt)}',
-      child: InkWell(
-        onTap: () => context.push('/match/${f.matchId}'),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
-          child: Row(children: [
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(f.homeName, style: t.bodyLarge, overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 2),
-                Text(f.awayName, style: t.bodyLarge, overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 6),
-                Text(
-                  [formatDateTime(f.scheduledAt), if (f.venue != null) f.venue!].join(', '),
-                  style: t.bodySmall,
-                  overflow: TextOverflow.ellipsis,
+    final reduce = MediaQuery.of(context).disableAnimations;
+    final duration = reduce ? Duration.zero : const Duration(milliseconds: 300);
+    final started = f.status != 'upcoming' && f.homeScore != null && f.awayScore != null;
+    final middle = started ? '${f.homeScore} – ${f.awayScore}' : 'vs';
+
+    final collapsed = Padding(
+      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          MatchStatusLabel(status: f.status, scheduledAt: f.scheduledAt),
+          const SizedBox(width: 8),
+          Expanded(child: Text(_dateLine(f), style: t.bodySmall, overflow: TextOverflow.ellipsis)),
+          AnimatedRotation(
+            turns: _open ? 0.5 : 0,
+            duration: duration,
+            child: Icon(Icons.keyboard_arrow_down_rounded, color: p.secondaryLabel, size: 22),
+          ),
+        ]),
+        const SizedBox(height: 10),
+        Row(children: [
+          TeamCrest(teamId: f.home, name: f.homeName, size: 26),
+          const SizedBox(width: 8),
+          Expanded(child: Text(f.homeName, style: t.titleSmall, overflow: TextOverflow.ellipsis)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Text(
+              middle,
+              style: started
+                  ? t.titleMedium!.copyWith(fontWeight: FontWeight.w800, fontFeatures: tabular)
+                  : t.bodyMedium!.copyWith(fontWeight: FontWeight.w600),
+            ),
+          ),
+          TeamCrest(teamId: f.away, name: f.awayName, size: 26),
+          const SizedBox(width: 8),
+          Expanded(child: Text(f.awayName, style: t.titleSmall, overflow: TextOverflow.ellipsis)),
+        ]),
+      ]),
+    );
+
+    Widget side(String id, String name) => Expanded(
+          child: Column(children: [
+            TeamCrest(teamId: id, name: name, size: 72),
+            const SizedBox(height: 12),
+            Text(name, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: t.titleMedium),
+          ]),
+        );
+
+    final expanded = Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 18),
+      child: Column(children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          side(f.home, f.homeName),
+          SizedBox(
+            width: 104,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 18),
+              child: Column(children: [
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    started ? '${f.homeScore} – ${f.awayScore}' : 'VS',
+                    style: t.headlineLarge!.copyWith(
+                      fontSize: started ? 40 : 44,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: started ? -1 : 1,
+                      fontFeatures: tabular,
+                      color: started ? p.label : p.accent,
+                      height: 1,
+                    ),
+                  ),
                 ),
+                const SizedBox(height: 10),
+                MatchStatusLabel(status: f.status, scheduledAt: f.scheduledAt, large: true),
               ]),
             ),
-            const SizedBox(width: 12),
-            StatusChip.match(f.status),
-            Icon(Icons.chevron_right_rounded, color: p.secondaryLabel.withValues(alpha: 0.6)),
+          ),
+          side(f.away, f.awayName),
+        ]),
+        if (f.venue != null) ...[
+          const SizedBox(height: 16),
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(Icons.location_on_rounded, size: 15, color: p.secondaryLabel),
+            const SizedBox(width: 4),
+            Flexible(child: Text('${f.venue}, ${formatDateTime(f.scheduledAt)}', style: t.bodySmall, overflow: TextOverflow.ellipsis)),
+          ]),
+        ],
+        const SizedBox(height: 16),
+        SecondaryButton(label: 'Match Details', onPressed: () => context.push('/match/${f.matchId}')),
+      ]),
+    );
+
+    return Semantics(
+      button: true,
+      expanded: _open,
+      label: '${f.homeName} versus ${f.awayName}, ${started ? 'score $middle, ' : ''}${formatDateTime(f.scheduledAt)}',
+      child: InkWell(
+        onTap: () => setState(() => _open = !_open),
+        child: AnimatedSize(
+          duration: duration,
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: Column(children: [
+            collapsed,
+            if (_open) expanded,
           ]),
         ),
       ),
     );
+  }
+
+  static const _days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  static const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  static String _dateLine(Fixture f) {
+    final d = f.scheduledAt == null ? null : DateTime.tryParse(f.scheduledAt!)?.toLocal();
+    if (d == null) return f.venue ?? '';
+    return '${_days[d.weekday - 1]} ${d.day} ${_months[d.month - 1]}';
   }
 }

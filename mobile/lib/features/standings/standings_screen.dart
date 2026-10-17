@@ -7,6 +7,7 @@ import '../../data/models.dart';
 import '../../data/repository.dart';
 import '../../widgets/async_view.dart';
 import '../../widgets/league_picker.dart';
+import '../../widgets/team_crest.dart';
 import '../../widgets/ui.dart';
 
 /// Points table that fits a 360 dp phone without sideways scrolling.
@@ -37,7 +38,7 @@ class StandingsScreen extends ConsumerWidget {
               Section(
                 footer: 'Top ${s.qualificationSpots} qualify. P played, W won, D drawn, L lost, '
                     '+/- difference, Pts points. Tap a team for its club.',
-                dividerIndent: 44,
+                dividerIndent: 78,
                 children: [
                   const _Header(),
                   for (final r in s.table) _StandingRow(row: r, qualifies: r.rank <= s.qualificationSpots),
@@ -115,9 +116,11 @@ class _StandingRow extends StatelessWidget {
                 style: t.titleMedium!.copyWith(fontFeatures: tabular, color: qualifies ? p.accent : p.secondaryLabel),
               ),
             ),
+            TeamCrest(teamId: r.teamId, name: r.teamName, size: 24),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(r.teamName, style: t.bodyLarge, overflow: TextOverflow.ellipsis),
+                Text(r.teamName, style: t.bodyLarge!.copyWith(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
                 const SizedBox(height: 2),
                 Row(children: [
                   Icon(icon, size: 13, color: color),

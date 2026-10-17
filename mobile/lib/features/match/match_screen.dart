@@ -9,7 +9,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repository.dart';
 import '../../widgets/async_view.dart';
-import '../../widgets/status_chip.dart';
+import '../../widgets/team_crest.dart';
 import '../../widgets/ui.dart';
 
 /// The app's signature screen: one huge live score, then the story of the match.
@@ -114,6 +114,8 @@ class ScoreBoard extends StatelessWidget {
       final won = completed && match.winnerTeamId == s.teamId;
       return Expanded(
         child: Column(crossAxisAlignment: align, children: [
+          TeamCrest(teamId: s.teamId, name: s.name, size: compact ? 36 : 56),
+          const SizedBox(height: 10),
           Text(
             s.name,
             textAlign: align == CrossAxisAlignment.start ? TextAlign.start : TextAlign.end,
@@ -134,7 +136,7 @@ class ScoreBoard extends StatelessWidget {
       child: Padding(
         padding: EdgeInsets.fromLTRB(24, compact ? 8 : 20, 24, compact ? 20 : 32),
         child: Column(children: [
-          StatusChip.match(match.status),
+          MatchStatusLabel(status: match.status, large: true),
           SizedBox(height: compact ? 12 : 20),
           Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
             team(match.home, CrossAxisAlignment.start),

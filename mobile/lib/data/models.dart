@@ -90,6 +90,8 @@ class Fixture {
   final String status;
   final String? scheduledAt;
   final String? venue;
+  final num? homeScore; // optional: /api/v1 fixtures send home_score / away_score
+  final num? awayScore;
 
   Fixture({
     required this.matchId,
@@ -100,6 +102,8 @@ class Fixture {
     required this.status,
     this.scheduledAt,
     this.venue,
+    this.homeScore,
+    this.awayScore,
   });
 
   factory Fixture.fromJson(Map<String, dynamic> j) => Fixture(
@@ -111,6 +115,8 @@ class Fixture {
         status: j['status'],
         scheduledAt: j['scheduled_at'],
         venue: j['venue'],
+        homeScore: j['home_score'],
+        awayScore: j['away_score'],
       );
 }
 

@@ -11,7 +11,7 @@ import '../../data/repository.dart';
 import '../../data/sync_queue.dart';
 import '../../widgets/async_view.dart';
 import '../../widgets/confirm_dialog.dart';
-import '../../widgets/status_chip.dart';
+import '../../widgets/team_crest.dart';
 import '../../widgets/ui.dart';
 import '../match/match_screen.dart';
 
@@ -64,7 +64,7 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
                       title: Text('${f.homeName} vs ${f.awayName}', overflow: TextOverflow.ellipsis),
                       subtitle: Text(formatDateTime(f.scheduledAt)),
                       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                        StatusChip.match(f.status),
+                        MatchStatusLabel(status: f.status, scheduledAt: f.scheduledAt),
                         SizedBox(
                           width: 32,
                           child: _matchId == f.matchId

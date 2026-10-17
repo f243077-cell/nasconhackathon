@@ -1,4 +1,3 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -61,21 +60,6 @@ class SyncScreen extends ConsumerWidget {
             const SizedBox(height: 6),
             Text(detail, style: t.bodyMedium),
           ]),
-        ),
-        // TODO(data layer): remove once connectivity_plus drives the status.
-        Section(
-          footer: 'For testing until the real connection check is wired.',
-          children: [
-            ListTile(
-              title: const Text('Simulate Offline'),
-              trailing: CupertinoSwitch(
-                value: sync.isOffline,
-                activeTrackColor: p.accent,
-                onChanged: controller.setOffline,
-              ),
-              onTap: () => controller.setOffline(!sync.isOffline),
-            ),
-          ],
         ),
         if (sync.pending.isEmpty)
           const Section(header: 'Waiting to Sync', children: [ListTile(title: Text('Nothing waiting'))])

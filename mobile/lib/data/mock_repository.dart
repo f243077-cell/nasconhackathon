@@ -133,7 +133,7 @@ class MockRepository implements AppRepository {
 
   @override
   Future<Session> login(String email, String password) => _wait(() {
-        final u = _users[email.trim().toLowerCase()];
+        final u = _users[email.trim().toLowerCase().replaceFirst('@nascon.test', '@demo.com')];
         if (u == null || password.isEmpty) throw ApiException('INVALID_CREDENTIALS');
         return Session.fromJson({
           'token': 'mock-jwt',
@@ -158,7 +158,16 @@ class MockRepository implements AppRepository {
 
   @override
   Future<List<Fixture>> fixtures(String leagueId) =>
-      _wait(() => leagueId == 'lg-1' ? [for (final f in _fixtures) Fixture.fromJson(f)] : <Fixture>[]);
+      _wait(() => leagueId == 'lg-1'
+          ? [
+              for (final f in _fixtures)
+                Fixture.fromJson({
+                  ...f,
+                  'home_score': _matchJson(f['match_id'])['home']['score'],
+                  'away_score': _matchJson(f['match_id'])['away']['score'],
+                }),
+            ]
+          : <Fixture>[]);
 
   Map<String, dynamic> _matchJson(String matchId) {
     final fx = _fixtures.firstWhere((f) => f['match_id'] == matchId, orElse: () => throw ApiException('MATCH_NOT_FOUND'));

@@ -128,8 +128,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 32),
                   child: Text(
-                    'Demo accounts, any password:\norganizer@demo.com\nmanager@demo.com\n'
-                    'player@demo.com\nviewer@demo.com\nadmin@demo.com',
+                    'Demo accounts, password Nascon@26:\norganizer@nascon.test\nmanager@nascon.test\n'
+                    'player@nascon.test\nviewer@nascon.test\nadmin@nascon.test',
                     style: t.bodySmall,
                   ),
                 ),

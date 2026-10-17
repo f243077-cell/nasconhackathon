@@ -9,6 +9,7 @@ import '../../data/models.dart';
 import '../../data/repository.dart';
 import '../../widgets/async_view.dart';
 import '../../widgets/league_picker.dart';
+import '../../widgets/team_crest.dart';
 import '../../widgets/ui.dart';
 
 /// Club tab: your own club, or the league's clubs if you don't belong to one.
@@ -46,7 +47,7 @@ class ClubTab extends ConsumerWidget {
               Section(children: [
                 for (final r in s.table)
                   ListTile(
-                    leading: const Icon(Icons.shield_rounded),
+                    leading: TeamCrest(teamId: r.teamId, name: r.teamName, size: 28),
                     title: Text(r.teamName),
                     trailing: Icon(Icons.chevron_right_rounded, color: context.palette.secondaryLabel.withValues(alpha: 0.6)),
                     onTap: () => context.push('/club/${r.teamId}'),
@@ -96,6 +97,8 @@ class ClubView extends ConsumerWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(32, 12, 32, 24),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            TeamCrest(teamId: c.clubId, name: c.name, size: 72),
+            const SizedBox(height: 16),
             Text(c.name, style: t.headlineMedium),
             const SizedBox(height: 4),
             Row(children: [
