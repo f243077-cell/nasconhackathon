@@ -32,9 +32,7 @@ def validate_checkout(body) -> None:
                 bad.append("items")
                 break
             seen.add(it["variant_id"])
-    dc = body.get("discount_code")
-    if dc is not None and not isinstance(dc, str):
-        bad.append("discount_code")
+    # discount_code is checked later (after variant 404): anything but null or a known code -> INVALID_DISCOUNT_CODE.
     pay = body.get("payment")
     if not isinstance(pay, dict) or not is_str(pay.get("token"), 1, 128):
         bad.append("payment")
@@ -57,7 +55,7 @@ def resolve_discount(code, codes: dict[str, int]) -> int:
     """Return the discount percent; raise 400 for an unknown code."""
     if code is None:
         return 0
-    if code not in codes:
+    if not isinstance(code, str) or code not in codes:
         raise ApiError(400, "INVALID_DISCOUNT_CODE", "Unknown discount code", {"discount_code": code})
     return codes[code]
 

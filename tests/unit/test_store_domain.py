@@ -21,7 +21,6 @@ def test_valid_checkout_passes():
     ({"items": [{"variant_id": "v1", "quantity": 11}]}, "items"),
     ({"items": [{"variant_id": "v1", "quantity": True}]}, "items"),
     ({"items": [{"variant_id": "v1", "quantity": 1}, {"variant_id": "v1", "quantity": 1}]}, "items"),
-    ({"discount_code": 10}, "discount_code"),
     ({"payment": {}}, "payment"),
 ])
 def test_invalid_checkout(patch, field):
@@ -44,6 +43,10 @@ def test_pricing_discount_and_format():
     with pytest.raises(ApiError) as e:
         store.resolve_discount("NOPE", {"WELCOME10": 10})
     assert e.value.code == "INVALID_DISCOUNT_CODE"
+    for bad in (123, True, ["WELCOME10"], {"code": "WELCOME10"}, ""):
+        with pytest.raises(ApiError) as e:
+            store.resolve_discount(bad, {"WELCOME10": 10})
+        assert e.value.status == 400 and e.value.code == "INVALID_DISCOUNT_CODE"
     assert store.format_pkr(450000) == "PKR 4500.00" and store.format_pkr(405) == "PKR 4.05"
 
 

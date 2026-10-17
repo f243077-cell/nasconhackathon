@@ -149,6 +149,7 @@ def main():
     check("checkout replay 200", call("POST", "/audit/v1/checkout", body)[0] == 200)
     check("order dup 409", code(call("POST", "/audit/v1/checkout", dict(body, customer_id="other"))) == "DUPLICATE_ORDER_ID")
     check("bad discount 400", code(call("POST", "/audit/v1/checkout", dict(body, order_id="o3", discount_code="NOPE"))) == "INVALID_DISCOUNT_CODE")
+    check("non-string discount 400", code(call("POST", "/audit/v1/checkout", dict(body, order_id="o3b", discount_code=123))) == "INVALID_DISCOUNT_CODE")
     check("variant 404", code(call("POST", "/audit/v1/checkout", dict(body, order_id="o4", items=[{"variant_id": "nope", "quantity": 1}]))) == "VARIANT_NOT_FOUND")
     check("declined 402", code(call("POST", "/audit/v1/checkout", dict(body, order_id="o5", payment={"token": "tok_declined"}))) == "PAYMENT_DECLINED")
 
