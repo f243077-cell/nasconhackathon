@@ -220,6 +220,47 @@ def main():
     r2 = call("POST", "/audit/v1/offline-sync", sync)[1]
     check("sync resend all duplicate", r2["summary"] == {"applied": 0, "rejected": 0, "duplicate": 4}, r2["summary"])
 
+    # ---- roster (Gunee domain + repo wiring)
+    call("POST", "/audit/v1/reset")
+    setup = {"league": {"league_id": "lg-r1", "tenant_id": "tenant-alpha", "sport_id": "football",
+                        "transfer_window": {"open": "2026-09-01", "close": "2026-09-30"},
+                        "max_squad_size": 3, "required_positions": {"gk": 1}},
+             "squads": [{"squad_id": "sq-a", "club_id": "club-a", "tenant_id": "tenant-alpha", "name": "A"},
+                        {"squad_id": "sq-b", "club_id": "club-b", "tenant_id": "tenant-alpha", "name": "B"}],
+             "players": [{"player_id": "p1", "name": "Ali", "position": "gk", "squad_id": "sq-a", "role": "captain"},
+                         {"player_id": "p2", "name": "Bilal", "position": "df", "squad_id": "sq-a", "role": "starter"}],
+             "matches_in_progress": [{"match_id": "m-live", "home_squad_id": "sq-a", "away_squad_id": "sq-b"}]}
+    r = call("POST", "/audit/v1/roster/setup", setup)
+    check("roster setup 201", r[0] == 201 and r[1]["squad_counts"] == {"sq-a": 2, "sq-b": 0}, r)
+    loan = {"request_id": "tr-1", "league_id": "lg-r1", "player_id": "p2", "type": "loan", "from_squad_id": "sq-a",
+            "to_squad_id": "sq-b", "effective_date": "2026-09-30", "loan_end_date": "2026-12-31",
+            "reason": "Tactical", "requested_by": "user-77"}
+    r = call("POST", "/audit/v1/roster/transfer", loan)
+    check("loan deferred 201", r[0] == 201 and r[1]["state"] == "deferred_until_match_end"
+          and r[1]["blocking_match_id"] == "m-live", r)
+    check("transfer replay 200", call("POST", "/audit/v1/roster/transfer", loan)[0] == 200)
+    check("request_id reuse 400", code(call("POST", "/audit/v1/roster/transfer", dict(loan, reason="x"))) == "VALIDATION_ERROR")
+    check("min position 409", code(call("POST", "/audit/v1/roster/transfer", dict(loan, request_id="tr-2", player_id="p1",
+          type="transfer", loan_end_date=None))) == "MIN_POSITION_VIOLATION")
+    h1 = call("GET", "/audit/v1/roster/history/p2?as_of=2027-01-05")[1]
+    h2 = call("GET", "/audit/v1/roster/history/p2?as_of=2027-01-05")[1]
+    check("loan_return once + back home", h1["current_squad_id"] == "sq-a" and len(h2["history"]) == 2
+          and h2["history"][1]["action"] == "loan_return", h2)
+    check("history 404", code(call("GET", "/audit/v1/roster/history/nobody")) == "PLAYER_NOT_FOUND")
+
+    # ---- standings (Gunee domain + projection wiring)
+    call("POST", "/audit/v1/leagues", {"league_id": "lg-s", "sport_id": "football", "teams": ["t1", "t2", "t3"],
+         "fixtures": [{"match_id": "s1", "home": "t1", "away": "t2"}, {"match_id": "s2", "home": "t2", "away": "t3"}],
+         "qualification": {"spots": 1}})
+    for i, (t, p) in enumerate([("match_start", {}), ("score", {"team_id": "t1", "event_type": "goal"}), ("match_end", {})]):
+        call("POST", "/audit/v1/events", ev(f"st{i}", t, p, "s1"))
+    st = call("GET", "/audit/v1/standings/lg-s")
+    check("standings 200", st[0] == 200 and st[1]["table"][0]["team_id"] == "t1" and st[1]["table"][0]["points"] == 3, st)
+    call("POST", "/audit/v1/events", ev("st9", "compensation", {"compensates": "st1", "reason": "offside"}, "s1"))
+    st = call("GET", "/audit/v1/standings/lg-s")[1]
+    check("standings after compensation", st["table"][0]["points"] == 1 and st["h2h"]["t1"]["t2"]["points"] == 1, st)
+    check("standings 404", code(call("GET", "/audit/v1/standings/nope")) == "LEAGUE_NOT_FOUND")
+
     # ---- mobile API
     s, lg, _ = call("POST", "/api/v1/auth/login", {"email": "manager@nascon.test", "password": "Nascon@26"})
     check("login", s == 200 and lg["role"] == "club_manager", lg)

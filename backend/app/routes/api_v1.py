@@ -1,5 +1,6 @@
 """Production API for the mobile app (/api/v1/*, JWT, rate-limited). Reuses the audit code paths."""
 import json
+from datetime import date
 
 from fastapi import APIRouter, Depends, Header
 from fastapi.responses import Response
@@ -14,7 +15,8 @@ from ..repo import store as store_repo
 from ..repo import sync as sync_repo
 from ..repo.seed import verify_password
 from ..services import bus
-from ..validate import is_id, is_str
+from ..domain import roster as roster_domain
+from ..validate import is_id, is_str, today_iso
 from .audit import compute_standings
 from .common import json_body, respond, run_tx
 from .rbac import load_user
@@ -158,12 +160,15 @@ def club(club_id: str, p: dict = Depends(principal)):
         require(p, "club.read", {"tenant_id": row["tenant_id"], "club_id": club_id})
         profile = json.loads(row["profile"])
         roster = []
+        today = date.fromisoformat(today_iso())
         for lg_row in conn.execute("SELECT state FROM roster_state").fetchall():
             state = json.loads(lg_row["state"])
             for pl in state["players"].values():
-                if state["squads"].get(pl["squad_id"] or "", {}).get("club_id") == club_id:
+                # Current squad is derived from the audit log (players[pid].squad_id is the initial squad).
+                squad_id, parent = roster_domain.placement(state, pl["player_id"], today)
+                if state["squads"].get(squad_id or "", {}).get("club_id") == club_id:
                     roster.append({"player_id": pl["player_id"], "name": pl["name"], "position": pl["position"],
-                                   "role": pl["role"], "squad_id": pl["squad_id"],
+                                   "role": pl["role"], "squad_id": squad_id, "parent_squad_id": parent,
                                    "league_id": state["league"]["league_id"]})
         if not roster:
             roster = conn.execute("SELECT player_id, name, position, role, club_id AS squad_id FROM players "

@@ -169,8 +169,8 @@ def transfer(conn, body) -> tuple[int, dict]:
             return 200, json.loads(prev["response"])
     roster_domain.validate_request(body)
     if prev_conflict(conn, body):
-        raise ApiError(409, "DUPLICATE_REQUEST_ID", "request_id already used with a different body",
-                       {"request_id": body["request_id"]})
+        # Spec defines no code for this; a reused request_id is a bad field value (catalogue code only).
+        raise validation_error(["request_id"], "request_id already used with a different body")
     state = load_state(conn, body["league_id"], lock=True)
     if state is None:
         raise ApiError(404, "LEAGUE_NOT_FOUND", "League not found", {"league_id": body["league_id"]})
@@ -194,8 +194,8 @@ def history(conn, player_id: str, as_of: str | None) -> dict:
     if not row:
         raise ApiError(404, "PLAYER_NOT_FOUND", "Player not found", {"player_id": player_id})
     state = load_state(conn, row["league_id"], lock=True)
-    response, new_state = roster_domain.history(state, player_id, as_of or today_iso())
-    if new_state != state:
+    response, new_state = roster_domain.history(state, player_id, as_of or today_iso(), now_iso())
+    if new_state is not None and new_state != state:
         save_state(conn, new_state)
     return response
 
