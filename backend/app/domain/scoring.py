@@ -15,6 +15,8 @@ OVERTIME_POLICIES = ("none", "extra_time", "shootout", "golden_score", "super_ov
 TIE_TOKENS = ("h2h_points", "h2h_diff", "overall_diff", "scored", "fair_play", "draw_lots")
 EVENT_TYPES = ("match_init", "match_start", "score", "discipline", "tiebreak_winner", "match_end", "compensation")
 COMPENSABLE = ("score", "discipline", "tiebreak_winner")
+# Innings scoring-event schema fields (spec 5.6 innings model). These are config keys, not event names.
+F_RUNS, F_LEGAL, F_WICKET_FLAG = "runs", "legal_ball", "wicket"
 
 
 def _pos_int(x, minimum: int) -> bool:
@@ -62,9 +64,9 @@ def validate_sport(body) -> dict:
                 bad.append("scoring_events")
                 break
             if model == "innings" and not (
-                _pos_int(val.get("runs"), 0)
-                and isinstance(val.get("legal_ball"), bool)
-                and isinstance(val.get("wicket"), bool)
+                _pos_int(val.get(F_RUNS), 0)
+                and isinstance(val.get(F_LEGAL), bool)
+                and isinstance(val.get(F_WICKET_FLAG), bool)
             ):
                 bad.append("scoring_events")
                 break
@@ -212,10 +214,10 @@ def project(match: dict, sport: dict, events: list[dict]) -> dict:
             if model == "event":
                 side["score"] += cfg.get("points", 0)
             elif model == "innings":
-                side["score"] += cfg.get("runs", 0)
-                if cfg.get("legal_ball"):
+                side["score"] += cfg.get(F_RUNS, 0)
+                if cfg.get(F_LEGAL):
                     side["balls"] += 1
-                if cfg.get("wicket"):
+                if cfg.get(F_WICKET_FLAG):
                     side["wickets"] += 1
             else:
                 side["score"] += cfg.get("rounds", 0)
