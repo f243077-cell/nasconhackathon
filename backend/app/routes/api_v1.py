@@ -16,6 +16,8 @@ from ..repo import store as store_repo
 from ..repo import sync as sync_repo
 from ..repo.seed import verify_password
 from ..services import bus
+from ..domain import competition as competition_domain
+from ..domain import fixtures as fixtures_domain
 from ..domain import roster as roster_domain
 from ..validate import is_id, is_str, is_ts, today_iso
 from .audit import compute_standings
@@ -370,3 +372,33 @@ def order_status(order_id: str, body=Depends(json_body), p: dict = Depends(princ
         order = store_repo.get_order(conn, order_id)
         require(p, "order.manage", {"tenant_id": order["tenant_id"], "club_id": order["club_id"]})
     return respond(200, run_tx(store_repo.transition_order, order_id, body))
+
+
+@router.get("/competitions/{competition_id}/promotion")
+def competition_promotion(competition_id: str, p: dict = Depends(principal)):
+    """FR-1.2: multi-division promotion/relegation computed from the live standings of each division."""
+    with tx() as conn:
+        tenant = None if p["role"] == "super_admin" else p.get("tenant_id")
+        leagues = leagues_repo.competition_leagues(conn, competition_id, tenant)
+        if not leagues:
+            raise ApiError(404, "COMPETITION_NOT_FOUND", "Competition not found", {"competition_id": competition_id})
+        divisions = [{"division": lg["competition"]["division"], "league_id": lg["league_id"],
+                      "table": compute_standings(conn, lg["league_id"])["table"]} for lg in leagues]
+    rules = leagues[0]["competition"]
+    promote, relegate = rules.get("promote", 1), rules.get("relegate", 1)
+    return {"competition_id": competition_id, "promote": promote, "relegate": relegate,
+            "divisions": competition_domain.promotion_relegation(divisions, promote, relegate)}
+
+
+@router.post("/leagues/{league_id}/knockout")
+def league_knockout(league_id: str, body=Depends(json_body), p: dict = Depends(principal)):
+    """FR-1.2 hybrid format: group-stage table -> seeded single-elimination bracket (pure computation)."""
+    body = body if isinstance(body, dict) else {}
+    with tx() as conn:
+        lg = _scoped_league(conn, p, league_id)
+        require(p, "league.fixtures.write", {"tenant_id": lg["tenant_id"], "league_id": league_id})
+        table = compute_standings(conn, league_id)["table"]
+    seeds = competition_domain.knockout_seeds(table, body.get("qualifiers", 4 if len(table) >= 4 else 2))
+    bracket = fixtures_domain.generate({"format": "single_elim", "teams": seeds,
+                                        "params": {"third_place_match": bool(body.get("third_place_match", False))}})
+    return {"league_id": league_id, "seeds": seeds, "bracket": bracket}

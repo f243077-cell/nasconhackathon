@@ -113,6 +113,7 @@ def reset(conn, body=None) -> dict:
              "qualification": {"spots": lg["qualification_spots"]}},
             tenant_id=lg["tenant_id"], name=lg["name"], season=lg["season"],
             fixture_meta={f["match_id"]: f for f in lg["fixtures"]},
+            competition=lg.get("competition"),
         )
         for match_id, evs in lg["demo_events"].items():
             for i, (etype, payload) in enumerate(evs, start=1):

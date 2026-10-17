@@ -66,7 +66,8 @@ def validate_league(body) -> None:
         raise validation_error(bad, "Invalid league")
 
 
-def register_league(conn, body, *, tenant_id=None, name=None, season=None, fixture_meta=None) -> dict:
+def register_league(conn, body, *, tenant_id=None, name=None, season=None, fixture_meta=None,
+                    competition=None) -> dict:
     validate_league(body)
     sport = get_sport(conn, body["sport_id"])
     if sport is None:
@@ -95,6 +96,8 @@ def register_league(conn, body, *, tenant_id=None, name=None, season=None, fixtu
         "qualification_spots": body["qualification"]["spots"],
         "lots_seed": lots_seed,
     }
+    if competition:
+        cfg["competition"] = competition
     conn.execute(
         "INSERT INTO leagues (league_id, tenant_id, name, season, sport_id, config) VALUES (%s, %s, %s, %s, %s, %s)",
         (body["league_id"], tenant_id, name or body["league_id"], season, body["sport_id"], json.dumps(cfg)),
@@ -119,3 +122,13 @@ def get_league(conn, league_id: str) -> dict | None:
     if row:
         row["config"] = json.loads(row["config"])
     return row
+
+
+def competition_leagues(conn, competition_id: str, tenant_id) -> list[dict]:
+    rows = conn.execute("SELECT league_id, tenant_id, config FROM leagues WHERE tenant_id IS NOT NULL ORDER BY seq").fetchall()
+    out = []
+    for r in rows:
+        comp = json.loads(r["config"]).get("competition") or {}
+        if comp.get("competition_id") == competition_id and (tenant_id is None or r["tenant_id"] == tenant_id):
+            out.append({"league_id": r["league_id"], "tenant_id": r["tenant_id"], "competition": comp})
+    return out

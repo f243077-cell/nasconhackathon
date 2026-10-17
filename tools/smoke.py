@@ -299,6 +299,13 @@ def main():
           call("GET", "/audit/v1/inventory/var-scarf-001-STD")[1]["stock"] == 50, r)
     hist = call("GET", "/api/v1/orders/app-ord-1", token=tok)[1]
     check("order history", [h["status"] for h in hist["status_history"]] == ["pending", "paid", "packed", "shipped", "delivered", "refunded"], hist)
+    call("POST", "/audit/v1/reset")
+    r = call("GET", "/api/v1/competitions/alpha-pyramid/promotion", token=org)
+    d = {x["division"]: x for x in r[1].get("divisions", [])} if r[0] == 200 else {}
+    check("promotion/relegation", r[0] == 200 and d[1]["relegated"] and d[2]["promoted"] == ["team-alpha-6"], r)
+    r = call("POST", "/api/v1/leagues/league-alpha-1/knockout", {"qualifiers": 4}, org)
+    check("hybrid knockout", r[0] == 200 and len(r[1]["seeds"]) == 4 and r[1]["bracket"]["bracket_size"] == 4, r)
+    check("knockout manager 403", call("POST", "/api/v1/leagues/league-alpha-1/knockout", {}, tok)[0] == 403)
     check("api needs token 401", call("GET", "/api/v1/leagues/league-alpha-1/squads")[0] == 401)
 
     print(f"\n{len(FAILS)} failure(s)")
