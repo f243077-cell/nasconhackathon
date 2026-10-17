@@ -99,3 +99,9 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# path_provider_android 2.3+ depends on `jni` (native C code), which forces a
+# ~700 MB NDK download on every fresh machine. These are the last pure-Java versions.
+dependency_overrides:
+  path_provider_android: 2.2.17
+  shared_preferences_android: 2.4.10
