@@ -1,7 +1,11 @@
-"""Internal queue consumer: reads structured domain events from the Redis stream (FR-2.3)."""
+"""Internal queue consumer: reads structured domain events from the Redis stream (FR-2.3).
+Also indexes finished MediaMTX recordings: upload to MinIO, then repo/athletes.index_recording (FR-3.2 VOD)."""
 import json
 import logging
+import os
+import threading
 import time
+from datetime import datetime, timezone
 
 import redis
 
@@ -10,9 +14,59 @@ from . import config
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s worker %(message)s")
 log = logging.getLogger("worker")
 GROUP = "workers"
+RECORDINGS = os.environ.get("RECORDINGS_DIR", "/recordings")
+VOD_BUCKET = os.environ.get("VOD_BUCKET", "vods")
+# MediaMTX's image has no shell or curl for runOnRecordSegmentComplete, so the worker watches the shared volume.
+# A segment is complete once it has not been written for SEGMENT_IDLE_S (stream ended or segment rolled).
+SEGMENT_IDLE_S = 3.0
+
+
+def _iso(ts: float) -> str:
+    return datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def finished_segments(root: str, now: float, seen: set[str]) -> list[tuple[str, str, os.stat_result]]:
+    """(mediamtx path "live/<key>", absolute segment path, stat) for every idle, not yet handled segment."""
+    out = []
+    live = os.path.join(root, "live")
+    for key in sorted(os.listdir(live)) if os.path.isdir(live) else []:
+        folder = os.path.join(live, key)
+        for name in sorted(os.listdir(folder)) if os.path.isdir(folder) else []:
+            seg = os.path.join(folder, name)
+            if seg in seen:
+                continue
+            st = os.stat(seg)
+            if now - st.st_mtime >= SEGMENT_IDLE_S:
+                out.append((f"live/{key}", seg, st))
+    return out
+
+
+def vod_indexer() -> None:
+    from minio import Minio
+
+    from .db import tx
+    from .repo import athletes as athletes_repo
+    client = Minio(config.MINIO_ENDPOINT, access_key=config.MINIO_ACCESS_KEY, secret_key=config.MINIO_SECRET_KEY,
+                   secure=False)
+    seen: set[str] = set()
+    while True:
+        try:
+            for path, seg, st in finished_segments(RECORDINGS, time.time(), seen):
+                if not client.bucket_exists(VOD_BUCKET):
+                    client.make_bucket(VOD_BUCKET)
+                client.fput_object(VOD_BUCKET, os.path.relpath(seg, RECORDINGS).replace(os.sep, "/"), seg,
+                                   content_type="video/mp4")
+                with tx() as conn:
+                    vod = athletes_repo.index_recording(conn, path, seg, _iso(st.st_ctime), _iso(st.st_mtime))
+                seen.add(seg)
+                log.info("vod %s -> %s", seg, vod and vod.get("vod_id"))
+        except Exception as exc:  # noqa: BLE001 - keep indexing after a transient MinIO/DB error
+            log.warning("vod indexer: %s", exc)
+        time.sleep(1)
 
 
 def main() -> None:
+    threading.Thread(target=vod_indexer, daemon=True).start()
     r = redis.Redis.from_url(config.REDIS_URL)
     while True:
         try:

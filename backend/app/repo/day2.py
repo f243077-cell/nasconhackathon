@@ -220,6 +220,7 @@ def erase_user(conn, user_id: str) -> dict:
     conn.execute("UPDATE guest_tokens SET status = 'wiped', user_id = NULL, merge_request = NULL "
                  "WHERE user_id = ANY(%s)", (ids,))
     conn.execute("DELETE FROM carts WHERE user_id = ANY(%s)", (ids,))
+    conn.execute("DELETE FROM follows WHERE follower_id = ANY(%s)", (ids,))
     return {"user_id": user_id, "status": "anonymized", "pii_retained": False, "tokens_wiped": True}
 
 

@@ -69,11 +69,16 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     command: ["python", "-m", "app.worker"]
+    volumes:
+      - recordings:/recordings:ro
     environment:
       DAY1_SALT: ${DAY1_SALT}
       DAY2_SALT: ${DAY2_SALT}
       DATABASE_URL: ${DATABASE_URL:-postgresql://nascon:nascon@postgres:5432/nascon}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
     depends_on:
       redis:
         condition: service_healthy
