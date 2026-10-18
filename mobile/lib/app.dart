@@ -10,7 +10,6 @@ import 'features/club/club_screen.dart';
 import 'features/fixtures/fixtures_screen.dart';
 import 'features/match/match_screen.dart';
 import 'features/more/more_screen.dart';
-import 'features/roster/roster_screen.dart';
 import 'features/scoring/scoring_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/shell/app_shell.dart';
@@ -20,7 +19,6 @@ import 'features/store/product_screen.dart';
 import 'features/store/receipt_screen.dart';
 import 'features/store/store_screen.dart';
 import 'features/sync/sync_screen.dart';
-import 'widgets/sync_status_bar.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final refresh = ValueNotifier(0);
@@ -57,7 +55,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/product/:id', builder: (_, s) => ProductScreen(productId: s.pathParameters['id']!)),
       GoRoute(path: '/cart', builder: (_, _) => const CartScreen()),
       GoRoute(path: '/receipt', builder: (_, s) => ReceiptScreen(order: s.extra! as Order)),
-      GoRoute(path: '/roster', builder: (_, _) => const RosterScreen()),
+      // Roster actions now live on the Clubs tab (the "+ Roster action" button); old links land there.
+      GoRoute(path: '/roster', redirect: (_, _) => '/club'),
       GoRoute(path: '/scoring', builder: (_, s) => ScoringScreen(initialMatchId: s.uri.queryParameters['match'])),
       GoRoute(path: '/sync', builder: (_, _) => const SyncScreen()),
     ],
@@ -71,23 +70,16 @@ class NasconApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
     final tenant = ref.watch(sessionProvider)?.tenant;
+    // White-label: the tenant's colour becomes the accent (floodlight lime before sign-in).
     final accent = parseHexColor(tenant?.primaryColor);
     return MaterialApp.router(
       title: 'NaSCon Sports',
       debugShowCheckedModeBanner: false,
-      theme: buildTheme(accent, Brightness.light),
-      darkTheme: buildTheme(accent, Brightness.dark),
-      themeMode: ThemeMode.system,
+      theme: buildTheme(accent),
+      themeMode: ThemeMode.dark,
       scrollBehavior: const AppScrollBehavior(),
       routerConfig: router,
-      // SyncStatusBar sits above every screen (including Login and dialogs' parent routes).
-      builder: (context, child) => ColoredBox(
-        color: context.palette.canvas,
-        child: Column(children: [
-          SafeArea(bottom: false, child: SyncStatusBar(onTap: () => router.push('/sync'))),
-          Expanded(child: MediaQuery.removePadding(context: context, removeTop: true, child: child!)),
-        ]),
-      ),
+      // The Online / Syncing / Offline pill is part of every screen's header (widgets/sync_status_bar.dart).
     );
   }
 }

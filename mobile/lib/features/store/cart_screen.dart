@@ -13,7 +13,7 @@ import '../../widgets/confirm_dialog.dart';
 import '../../widgets/ui.dart';
 import 'cart.dart';
 
-/// Cart, discount, mock payment and checkout (with confirmation). Pay sits in the bottom bar.
+/// Checkout: items, discount code, totals, mock payment method. Pay sits at the bottom.
 class CartScreen extends ConsumerStatefulWidget {
   const CartScreen({super.key});
 
@@ -28,10 +28,11 @@ class _CartScreenState extends ConsumerState<CartScreen> {
   String _token = 'tok_success';
   bool _paying = false;
 
+  // Mock gateway tokens (CLAUDE.md §7.9): each test card triggers one outcome.
   static const _tokens = {
-    'tok_success': 'Approves',
-    'tok_declined': 'Declines',
-    'tok_capture_fail': 'Fails',
+    'tok_success': ('Test card', 'Approves'),
+    'tok_declined': ('Test card', 'Declines'),
+    'tok_capture_fail': ('Test card', 'Capture fails'),
   };
 
   @override
@@ -92,106 +93,161 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     final subtotal = lines.fold<int>(0, (s, l) => s + l.totalMinor);
     final discount = _appliedCode == 'WELCOME10' ? subtotal * 10 ~/ 100 : 0;
     final total = subtotal - discount;
-    final t = Theme.of(context).textTheme;
     final p = context.palette;
 
     if (lines.isEmpty) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Cart')),
-        body: EmptyState(
-          message: 'Your cart is empty',
-          icon: Icons.shopping_cart_rounded,
-          action: TextButton(onPressed: () => context.go('/store'), child: const Text('Browse the Store')),
-        ),
+      return FlatPage(
+        title: 'Checkout',
+        backFallback: '/store',
+        children: [
+          EmptyState(
+            message: 'Your cart is empty',
+            icon: Icons.shopping_bag_outlined,
+            action: SecondaryButton(label: 'Browse the store', onPressed: () => context.go('/store')),
+          ),
+        ],
       );
     }
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Cart')),
-      bottomNavigationBar: BottomActionBar(children: [
-        if (offline)
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(Icons.cloud_off_rounded, size: 16, color: p.warning),
-            const SizedBox(width: 6),
-            Flexible(child: Text('Checkout needs an internet connection.', style: t.bodyMedium)),
-          ]),
+    return FlatPage(
+      title: 'Checkout',
+      backFallback: '/store',
+      actions: [
         PrimaryButton(label: 'Pay ${formatMoney(total)}', loading: _paying, onPressed: offline ? null : () => _pay(total)),
-      ]),
-      body: ListView(padding: const EdgeInsets.only(top: 12, bottom: 24), children: [
-        Section(
-          dividerIndent: 84,
-          children: [
-            for (final l in lines)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 12, 4, 12),
-                child: Row(children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: SizedBox.square(dimension: 56, child: ProductArtwork(type: l.product.type, iconSize: 26)),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(l.product.name, style: t.titleMedium, overflow: TextOverflow.ellipsis),
-                      if (l.variant.label.isNotEmpty) Text(l.variant.label, style: t.bodyMedium),
-                      const SizedBox(height: 8),
-                      Row(children: [
-                        QuantityStepper(
-                          value: l.quantity,
-                          max: l.variant.stock.clamp(1, 10),
-                          onChanged: (q) => ref.read(cartProvider.notifier).setQuantity(l.variant.variantId, q),
-                        ),
-                        const Spacer(),
-                        Text(formatMoney(l.totalMinor), style: t.bodyLarge!.copyWith(fontFeatures: tabular)),
-                      ]),
-                    ]),
-                  ),
-                  IconButton(
-                    tooltip: 'Remove ${l.product.name}',
-                    icon: Icon(Icons.close_rounded, color: p.secondaryLabel),
-                    onPressed: () => ref.read(cartProvider.notifier).remove(l.variant.variantId),
+      ],
+      children: [
+        if (offline) ...[
+          _Banner(icon: Icons.cloud_off_rounded, text: 'Checkout needs an internet connection.'),
+          const SizedBox(height: 14),
+        ],
+        for (final l in lines)
+          Container(
+            padding: const EdgeInsets.only(bottom: 14),
+            margin: const EdgeInsets.only(bottom: 14),
+            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: p.raised))),
+            child: Row(children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: SizedBox.square(dimension: 60, child: ProductArtwork(type: l.product.type, imageUrl: l.product.imageUrl, iconSize: 26)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(l.product.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: p.label)),
+                  Text(
+                    [if (l.variant.label.isNotEmpty) l.variant.label.replaceAll(' / ', ' · '), formatMoney(l.totalMinor)].join(' · '),
+                    style: TextStyle(fontSize: 13, color: p.label3),
                   ),
                 ]),
               ),
-          ],
-        ),
-        Section(
-          header: 'Discount Code',
-          footer: _codeError ?? (_appliedCode != null ? '$_appliedCode applied, 10% off.' : null),
-          children: [
-            Row(children: [
-              Expanded(
-                child: TextField(
-                  controller: _code,
-                  textCapitalization: TextCapitalization.characters,
-                  autocorrect: false,
-                  onSubmitted: (_) => _applyCode(),
-                  decoration: const InputDecoration(
-                    hintText: 'Enter code',
-                    filled: false,
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                  ),
-                ),
+              const SizedBox(width: 8),
+              // Down to zero removes the line.
+              QuantityStepper(
+                value: l.quantity,
+                min: 0,
+                max: l.variant.stock.clamp(1, 10),
+                onChanged: (q) => q == 0
+                    ? ref.read(cartProvider.notifier).remove(l.variant.variantId)
+                    : ref.read(cartProvider.notifier).setQuantity(l.variant.variantId, q),
               ),
-              TextButton(onPressed: _applyCode, child: const Text('Apply')),
             ]),
-          ],
+          ),
+        TextField(
+          controller: _code,
+          textCapitalization: TextCapitalization.characters,
+          autocorrect: false,
+          onSubmitted: (_) => _applyCode(),
+          onChanged: (_) {
+            if (_appliedCode != null || _codeError != null) setState(() => _codeError = null);
+          },
+          style: condensed(16, weight: FontWeight.w700, tracking: 1.5, color: p.label),
+          decoration: InputDecoration(
+            hintText: 'Discount code',
+            errorText: _codeError,
+            suffixIcon: _appliedCode != null && _code.text.trim().toUpperCase() == _appliedCode
+                ? Padding(
+                    padding: const EdgeInsets.only(right: 14),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Text('✓ Code applied', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: p.accent)),
+                    ]),
+                  )
+                : TextButton(onPressed: _applyCode, child: const Text('APPLY')),
+          ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(32, 0, 32, 8),
-          child: Text('Test Card', style: t.bodySmall!.copyWith(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 16),
+        ValueRow('Subtotal', formatMoney(subtotal)),
+        if (discount > 0) ValueRow('Discount (10%)', '− ${formatMoney(discount)}', valueColor: p.accent),
+        const SizedBox(height: 6),
+        ValueRow('Total', formatMoney(total), emphasized: true),
+        const SizedBox(height: 18),
+        const SectionLabel('Pay with'),
+        RadioGroup<String>(
+          groupValue: _token,
+          onChanged: (v) => setState(() => _token = v ?? _token),
+          child: Column(children: [
+            for (final e in _tokens.entries) ...[
+              _PayOption(value: e.key, title: e.value.$1, detail: e.value.$2, selected: e.key == _token, onTap: () => setState(() => _token = e.key)),
+              const SizedBox(height: 8),
+            ],
+          ]),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
-          child: Segmented<String>(value: _token, options: _tokens, onChanged: (v) => setState(() => _token = v)),
+        Text('Demo payment — no real money is charged.', style: TextStyle(fontSize: 12, color: p.label3)),
+      ],
+    );
+  }
+}
+
+class _PayOption extends StatelessWidget {
+  final String value;
+  final String title;
+  final String detail;
+  final bool selected;
+  final VoidCallback onTap;
+  const _PayOption({required this.value, required this.title, required this.detail, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Material(
+      color: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: selected ? p.accent : p.border, width: selected ? 2 : 1),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: SizedBox(
+          height: 52,
+          child: Row(children: [
+            Radio<String>(value: value, activeColor: p.accent),
+            Expanded(child: Text(title, style: TextStyle(fontSize: 15, color: p.label))),
+            Padding(
+              padding: const EdgeInsets.only(right: 14),
+              child: Text(detail.toUpperCase(), style: condensed(12, weight: FontWeight.w600, tracking: 1, color: p.label3)),
+            ),
+          ]),
         ),
-        Section(children: [
-          ValueRow('Subtotal', formatMoney(subtotal)),
-          if (discount > 0) ValueRow('Discount', '−${formatMoney(discount)}'),
-          ValueRow('Total', formatMoney(total), emphasized: true),
-        ]),
+      ),
+    );
+  }
+}
+
+class _Banner extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _Banner({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(color: p.warningFill, borderRadius: BorderRadius.circular(10)),
+      child: Row(children: [
+        Icon(icon, size: 18, color: p.warning),
+        const SizedBox(width: 8),
+        Expanded(child: Text(text, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: p.warning))),
       ]),
     );
   }

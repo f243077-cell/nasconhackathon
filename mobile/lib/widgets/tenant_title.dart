@@ -1,44 +1,42 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/format.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
+import 'team_crest.dart';
 
-/// The tenant's mark (white-label). Logo when available, else a monogram on the accent colour.
-/// Shown once per surface (branding.md: logos don't repeat), not in every app bar.
+/// The tenant's mark (white-label). Logo when available, else a crest in the tenant colour.
 class TenantMark extends ConsumerWidget {
   final double size;
-  const TenantMark({super.key, this.size = 32});
+  const TenantMark({super.key, this.size = 34});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tenant = ref.watch(sessionProvider)?.tenant;
     final p = context.palette;
-    final initials = (tenant?.name ?? 'N')
-        .split(' ')
-        .where((w) => w.isNotEmpty)
-        .take(2)
-        .map((w) => w[0].toUpperCase())
-        .join();
-    final monogram = Container(
-      width: size,
-      height: size,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(color: p.accent, borderRadius: BorderRadius.circular(size * 0.28)),
-      child: Text(
-        initials,
-        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: size * 0.38),
-      ),
+    final crest = CrestShape(
+      initials: initialsOf(tenant?.name ?? 'NaSCon Sports'),
+      primary: p.accent,
+      secondary: p.accentDeep,
+      textColor: p.onAccent,
+      size: size,
     );
     return Semantics(
       label: '${tenant?.name ?? 'App'} logo',
       image: true,
       excludeSemantics: true,
       child: tenant?.logoUrl == null
-          ? monogram
+          ? crest
           : ClipRRect(
-              borderRadius: BorderRadius.circular(size * 0.28),
-              child: Image.network(tenant!.logoUrl!, width: size, height: size, errorBuilder: (_, _, _) => monogram),
+              borderRadius: crestRadius(size, size * 1.12),
+              child: Image.network(
+                tenant!.logoUrl!,
+                width: size,
+                height: size * 1.12,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => crest,
+              ),
             ),
     );
   }

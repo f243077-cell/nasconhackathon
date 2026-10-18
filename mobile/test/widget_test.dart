@@ -10,13 +10,13 @@ class _FakeSync extends SyncController {
 }
 
 void main() {
-  testWidgets('starts on the login screen with the sync bar', (tester) async {
+  testWidgets('starts on the login screen with the status pill', (tester) async {
     await tester.pumpWidget(ProviderScope(
       overrides: [syncProvider.overrideWith(_FakeSync.new)],
       child: const NasconApp(),
     ));
     await tester.pumpAndSettle();
-    expect(find.text('Sign In'), findsWidgets);
-    expect(find.text('Online'), findsOneWidget);
+    expect(find.text('SIGN IN'), findsOneWidget);
+    expect(find.text('Online · up to date'), findsOneWidget);
   });
 }

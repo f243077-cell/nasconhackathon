@@ -15,9 +15,9 @@ class LoadingView extends StatelessWidget {
           label: label,
           liveRegion: true,
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const CupertinoActivityIndicator(radius: 13),
+            CupertinoActivityIndicator(radius: 13, color: context.palette.label3),
             const SizedBox(height: 12),
-            Text(label, style: Theme.of(context).textTheme.bodyMedium),
+            Text(label.toUpperCase(), style: condensed(13, weight: FontWeight.w600, tracking: 1.5, color: context.palette.label3)),
           ]),
         ),
       );
@@ -35,9 +35,13 @@ class EmptyState extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 48),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Icon(icon, size: 44, color: context.palette.secondaryLabel, semanticLabel: message),
+            Icon(icon, size: 44, color: context.palette.muted, semanticLabel: message),
             const SizedBox(height: 14),
-            Text(message, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: condensed(20, weight: FontWeight.w700, color: context.palette.label2),
+            ),
             if (action != null) ...[const SizedBox(height: 20), action!],
           ]),
         ),
@@ -54,12 +58,12 @@ class ErrorView extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 48),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Icon(Icons.wifi_off_rounded, size: 44, color: context.palette.secondaryLabel, semanticLabel: 'Problem'),
+            Icon(Icons.wifi_off_rounded, size: 44, color: context.palette.muted, semanticLabel: 'Problem'),
             const SizedBox(height: 14),
-            Text(message, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium),
+            Text(message, textAlign: TextAlign.center, style: condensed(20, weight: FontWeight.w700, color: context.palette.label2)),
             if (onRetry != null) ...[
-              const SizedBox(height: 16),
-              TextButton(onPressed: onRetry, child: const Text('Try Again')),
+              const SizedBox(height: 12),
+              TextButton(onPressed: onRetry, child: const Text('TRY AGAIN')),
             ],
           ]),
         ),
@@ -134,13 +138,20 @@ class AsyncSliver<T> extends StatelessWidget {
 
 void showSuccess(BuildContext context, String message) => ScaffoldMessenger.of(context)
   ..hideCurrentSnackBar()
-  ..showSnackBar(SnackBar(content: Text(message)));
+  ..showSnackBar(SnackBar(
+    content: Row(children: [
+      Icon(Icons.check_circle_rounded, color: context.palette.canvas, size: 20),
+      const SizedBox(width: 10),
+      Expanded(child: Text(message)),
+    ]),
+  ));
 
 void showError(BuildContext context, Object error) => ScaffoldMessenger.of(context)
   ..hideCurrentSnackBar()
   ..showSnackBar(SnackBar(
+    backgroundColor: context.palette.dangerSoft,
     content: Row(children: [
-      Icon(Icons.error_rounded, color: context.palette.danger, size: 20, semanticLabel: 'Error'),
+      Icon(Icons.error_rounded, color: context.palette.canvas, size: 20, semanticLabel: 'Error'),
       const SizedBox(width: 10),
       Expanded(child: Text(friendlyError(error))),
     ]),
