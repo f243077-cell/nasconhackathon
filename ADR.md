@@ -147,3 +147,37 @@
 **Alternatives**
 - Firebase or Supabase offline sync: prohibited.
 - Native Kotlin: the team knows Flutter better.
+
+## ADR-17: Co-stream layout capacity is checked after the host-drop handoff
+
+**Context**
+- Spec 5.5 step 4 rejects `solo` with more than 1 and `grid_2` with more than 2 "effective active" participants, and asks teams to decide and document which count that is.
+
+**Decision**
+- The count is taken **after** the handoff rule (step 5). A host drop that leaves 2 broadcasters on `grid_2`, or 1 on `solo`, is valid; the layout must fit who is actually on screen.
+- `COSTREAM_SESSION_FULL` (step 3) still counts the requested participants, so 5 people are rejected even if a drop would leave 4.
+
+**Consequences**
+- The composite stream never shows an empty tile for a host who already left.
+- `domain/costream.plan_session` computes the handoff before the layout check; `tests/unit/test_costream.py::test_layout_capacity_uses_count_after_handoff` pins every case.
+
+**Alternatives**
+- Count before the handoff: would reject a valid 3-person `grid_2` session whose host dropped.
+
+## ADR-18: Moderation precedence and leetspeak ambiguity
+
+**Context**
+- Spec 5.8 defines profanity masking, flood muting and a rate rule, but not what happens when one message triggers several, and `!` is both a leet `i` and punctuation ("s!c@m" vs "now!").
+
+**Decision**
+- One rule per message, in this order: rate limit (> 3 messages in 2 s, only when messages carry `sent_at`), then flood, then profanity. Rate and flood drop the message and mute the sender; profanity masks and kicks.
+- A token is profane if any reading matches the dictionary: `!` as `i`, `!` removed, or `1` as `l`. Plain punctuation around a masked token is kept ("sc@m," becomes "***,").
+- `flagged_count` counts flagged messages in `filtered_messages`; dropped messages are reported through `muted_users`.
+- The dictionary is data (`seed/moderation_words.json`), not code.
+
+**Consequences**
+- A flood message is never broadcast, even if it is also profane, so muting is the stronger and sufficient sanction.
+- Kick and mute lists are built in first-violation order with set semantics, so 10 identical requests still give `["user-spammer"]` (edge case 3).
+
+**Alternatives**
+- Apply every rule: a dropped message would also count as flagged, making `flagged_count` disagree with the body.

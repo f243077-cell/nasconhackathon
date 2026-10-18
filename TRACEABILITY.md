@@ -19,3 +19,9 @@ Each owner keeps their own rows up to date.
 | NFR-4 | Offline cache, queue and sync with conflict handling | `backend/app/repo/sync.py`, `mobile/lib/data/` | `tools/smoke.py` (offline sync) | Tanzeel / Huzaifa |
 | NFR-5 | Security: JWT verification, rate limit, input validation, 413 | `backend/app/main.py`, `backend/app/validate.py`, `backend/app/auth/*` | `tests/unit/test_rbac_policy.py`, `tools/smoke.py` (401/413/429, injection) | Tanzeel |
 | NFR-7 | Reproducible one-command stack with auto-seed | `docker-compose.yml`, `backend/Dockerfile`, `backend/app/bootstrap.py`, `backend/app/repo/seed.py` | `tools/smoke.py` (reset idempotent, health) | Tanzeel |
+| FR-3.3 | 4-way co-stream: check order, layout capacity, host-drop handoff, one chat room per session | `backend/app/domain/costream.py`, ADR-17 | `tests/unit/test_costream.py` | Gunee |
+| FR-4.1 | QR deep links: entity type, live target route, stable short codes, deep-link URIs, export URLs | `backend/app/domain/qr.py` | `tests/unit/test_qr.py` | Gunee |
+| FR-4.2 / FR-4.3 / FR-4.4 | Guest token principal, 403 `GUEST_WRITE_FORBIDDEN`, atomic guest-cart merge with stock cap and replay | `backend/app/domain/guest_cart.py` | `tests/unit/test_guest_cart.py`, `tests/selenium/test_guest_grid.py` | Gunee |
+| FR-5.3 | Chat moderation: leetspeak masking, flood and rate rules, kick/mute lists | `backend/app/domain/moderation.py`, `backend/app/seed/moderation_words.json`, ADR-18 | `tests/unit/test_moderation.py` | Gunee |
+| NFR-8 / NFR-1 (guest web) | Guest Web Player DOM contract, no login wall, 403 chat opens auth modal, banner updates within 500 ms | `backend/app/web/` | `tests/selenium/test_guest_grid.py` (`pytest -n 3 tests/selenium/`) | Gunee / Huzaifa |
+| NFR-9 | QR telemetry: device family and UTC hour bucket only | `backend/app/domain/qr.py` (`device_family`, `hour_bucket`) | `tests/unit/test_qr.py` | Gunee |
