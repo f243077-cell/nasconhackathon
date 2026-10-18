@@ -41,3 +41,26 @@ def test_stream_response_active_and_revoked():
     assert r["playback_url"] == "http://localhost:8888/live/sk_live_x/index.m3u8"
     r = streaming.response("player-alpha-1", "OBS", "sk_live_x", "revoked", "localhost")
     assert r["ingest_endpoints"] is None and r["playback_url"] is None
+
+
+def test_media_hook_token_check():
+    assert streaming.hook_authorized("s3cret-token", "s3cret-token")
+    assert not streaming.hook_authorized("s3cret-token", "wrong")
+    assert not streaming.hook_authorized("s3cret-token", None)
+    assert not streaming.hook_authorized("s3cret-token", "")
+    assert not streaming.hook_authorized("", "")          # no token configured: hook disabled
+    assert not streaming.hook_authorized("", "anything")
+
+
+@pytest.mark.parametrize("path,ok", [
+    ("/recordings/live/sk_live_9f83a1b2c3d4e5f6/seg.mp4", True),
+    ("s3://vods/live/sk_live_9f83a1b2c3d4e5f6/seg.mp4", True),
+    ("/etc/passwd", False),
+    ("/recordings/../etc/passwd", False),
+    ("http://evil.example/x.mp4", False),
+    ("/recordings/" + "a" * 600, False),
+    (None, False),
+    (42, False),
+])
+def test_recording_path_allowed(path, ok):
+    assert streaming.recording_path_allowed(path) is ok

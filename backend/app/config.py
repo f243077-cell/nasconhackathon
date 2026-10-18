@@ -7,6 +7,9 @@ DAY2_SALT = os.environ.get("DAY2_SALT", "")
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "http://localhost:8080")
 MEDIA_PUBLIC_HOST = os.environ.get("MEDIA_PUBLIC_HOST", "localhost")
 MEDIAMTX_API = os.environ.get("MEDIAMTX_API", "http://mediamtx:9997")
+# Shared secret for POST /internal/media/recorded (X-Media-Hook-Token). Empty = the hook route is disabled;
+# the worker indexes recordings directly and does not need it.
+MEDIA_HOOK_TOKEN = os.environ.get("MEDIA_HOOK_TOKEN", "")
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://nascon:nascon@localhost:5432/nascon")
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 JWT_SECRET = os.environ.get("JWT_SECRET", "change-me-dev-jwt-secret")

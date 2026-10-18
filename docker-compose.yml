@@ -44,6 +44,7 @@ services:
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
       MEDIA_PUBLIC_HOST: ${MEDIA_PUBLIC_HOST:-localhost}
       MEDIAMTX_API: ${MEDIAMTX_API:-http://mediamtx:9997}
+      MEDIA_HOOK_TOKEN: ${MEDIA_HOOK_TOKEN:-}
       DATABASE_URL: ${DATABASE_URL:-postgresql://nascon:nascon@postgres:5432/nascon}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       JWT_SECRET: ${JWT_SECRET:-change-me-dev-jwt-secret}

@@ -3,9 +3,12 @@ import json
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import Response
+from starlette.concurrency import run_in_threadpool
 
+from .. import config
 from ..auth import policy
 from ..db import tx
+from ..domain import streaming as streaming_domain
 from ..errors import ApiError
 from ..repo import athletes as athletes_repo
 from .api_v1 import principal, principal_or_guest
@@ -51,13 +54,19 @@ def unfollow(player_id: str, p: dict = Depends(principal)):
 
 @router.post("/internal/media/recorded")
 async def media_recorded(request: Request):
-    """MediaMTX runOnRecordSegmentComplete hook: {"path": "live/<key>", "segment_path": "...", "started_at"?, "ended_at"?}."""
+    """MediaMTX runOnRecordSegmentComplete hook: {"path": "live/<key>", "segment_path": "...", "started_at"?, "ended_at"?}.
+    Internal only: disabled (404) unless MEDIA_HOOK_TOKEN is set, then needs a matching X-Media-Hook-Token (403)."""
+    if not config.MEDIA_HOOK_TOKEN:
+        return Response(status_code=404)
+    if not streaming_domain.hook_authorized(config.MEDIA_HOOK_TOKEN, request.headers.get("x-media-hook-token")):
+        return Response(status_code=403)
     try:
         data = json.loads(await request.body() or b"{}")
     except ValueError:
         return Response(status_code=400)
-    if not isinstance(data, dict) or not isinstance(data.get("path"), str) or not isinstance(data.get("segment_path"), str):
+    if not isinstance(data, dict) or not isinstance(data.get("path"), str) or \
+            not streaming_domain.recording_path_allowed(data.get("segment_path")):
         return Response(status_code=400)
-    vod = run_tx(athletes_repo.index_recording, data["path"], data["segment_path"], data.get("started_at"),
-                 data.get("ended_at"))
+    vod = await run_in_threadpool(run_tx, athletes_repo.index_recording, data["path"], data["segment_path"],
+                                  data.get("started_at"), data.get("ended_at"))
     return respond(201 if vod else 202, vod or {"indexed": False})

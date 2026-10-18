@@ -1,4 +1,5 @@
 """Creator stream-key lifecycle (FR-3.2, spec II 5.4). Pure: validation, key format, response + signature payload."""
+import hmac
 import re
 import secrets
 
@@ -48,3 +49,20 @@ def response(player_id: str, label: str, stream_key: str, status: str, media_hos
         } if active else None,
         "playback_url": f"http://{media_host}:8888/live/{stream_key}/index.m3u8" if active else None,
     }
+
+
+# ------------------------------------------------------------------ recording hook (FR-3.2 VOD index)
+RECORDING_PREFIXES = ("/recordings/", "s3://")
+
+
+def hook_authorized(expected: str, given: str | None) -> bool:
+    """Constant-time shared-secret check for the media hook. An empty expected token disables the hook."""
+    if not expected or not isinstance(given, str) or not given:
+        return False
+    return hmac.compare_digest(expected.encode(), given.encode())
+
+
+def recording_path_allowed(path) -> bool:
+    """Only paths on the recordings volume or VOD objects in MinIO may be indexed (no traversal)."""
+    return (isinstance(path, str) and path.startswith(RECORDING_PREFIXES) and ".." not in path
+            and len(path) <= 512)

@@ -170,6 +170,10 @@ def main():
     check("DLQ depth grows by 2", r["dlq_status"]["queue_depth"] == 2 and len(r["dlq_status"]["undelivered_events"])
           == 2, 2, r["dlq_status"]["queue_depth"])
 
+    # FR-3.2 recording hook is internal: no token -> 403 (or 404 when disabled)
+    r = call("POST", "/internal/media/recorded", {"path": "live/sk_live_0000000000000000", "segment_path": "/etc/passwd"})
+    check("media hook rejects unauthenticated calls", r[0] in (403, 404), "403/404", r[0])
+
     # 5.9 metrics + privacy
     r = call("GET", "/metrics")
     text = r[1].decode() if isinstance(r[1], bytes) else str(r[1])
