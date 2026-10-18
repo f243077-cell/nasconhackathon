@@ -110,6 +110,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       LabeledField(
                         label: 'Email',
                         child: TextField(
+                          key: const ValueKey('login-email'),
                           controller: _email,
                           keyboardType: TextInputType.emailAddress,
                           autofillHints: const [AutofillHints.email],
@@ -123,6 +124,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       LabeledField(
                         label: 'Password',
                         child: TextField(
+                          key: const ValueKey('login-password'),
                           controller: _password,
                           obscureText: _obscure,
                           autofillHints: const [AutofillHints.password],
@@ -155,7 +157,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             ]),
                           ),
                   ),
-                  PrimaryButton(label: 'Sign in', loading: _loading, onPressed: _submit),
+                  Semantics(identifier: 'login-submit', child: PrimaryButton(label: 'Sign in', loading: _loading, onPressed: _submit)),
                   const SizedBox(height: 6),
                   Row(children: [
                     Expanded(

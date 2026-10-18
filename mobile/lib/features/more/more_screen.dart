@@ -84,6 +84,9 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
           ),
           const SizedBox(height: 16),
           _Menu(children: [
+            _MenuRow(title: 'Scan QR code', subtitle: 'Open a match, club or stream from its code', onTap: () => context.push('/scan')),
+            if (session.user.playerId != null)
+              _MenuRow(title: 'Go live', subtitle: 'Stream key for OBS, and co-streams', onTap: () => context.push('/broadcast')),
             _MenuRow(
               title: 'Sync queue',
               trailing: pending == 0 ? null : Tag('$pending pending', color: p.warning, fontSize: 12),
