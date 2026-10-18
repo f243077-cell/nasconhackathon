@@ -10,6 +10,7 @@ import '../../core/theme.dart';
 import '../../widgets/async_view.dart';
 import '../../widgets/team_crest.dart';
 import '../../widgets/ui.dart';
+import 'costream_participants.dart';
 import 'live_feed.dart';
 
 /// Co-Stream (deep link nascon://stream/cs-session-*). Composite playback + the session's single
@@ -86,6 +87,8 @@ class _CoStreamScreenState extends ConsumerState<CoStreamScreen> {
     final server = chat.value ?? const <ChatMessage>[];
     final keys = {for (final m in server) m.key};
     final messages = [...server, ..._local.where((m) => !keys.contains(m.key))];
+    final costream = ref.watch(coStreamProvider(widget.sessionId)).value;
+    final playback = costream?.playbackUrl ?? _playback;
 
     return Semantics(
       identifier: 'costream-screen',
@@ -118,11 +121,11 @@ class _CoStreamScreenState extends ConsumerState<CoStreamScreen> {
                   ),
                 ),
               ),
-              if (_playback != null) ...[
+              if (playback != null) ...[
                 const SizedBox(height: 12),
                 InkWell(
                   onTap: () {
-                    Clipboard.setData(ClipboardData(text: _playback!));
+                    Clipboard.setData(ClipboardData(text: playback));
                     showSuccess(context, 'Stream link copied.');
                   },
                   child: Padding(
@@ -130,7 +133,7 @@ class _CoStreamScreenState extends ConsumerState<CoStreamScreen> {
                     child: Row(children: [
                       Icon(Icons.link_rounded, size: 18, color: p.label2),
                       const SizedBox(width: 8),
-                      Expanded(child: Text(_playback!, style: TextStyle(color: p.label2, fontSize: 13), overflow: TextOverflow.ellipsis)),
+                      Expanded(child: Text(playback, style: TextStyle(color: p.label2, fontSize: 13), overflow: TextOverflow.ellipsis)),
                       Icon(Icons.copy_rounded, size: 18, color: p.label2, semanticLabel: 'Copy stream link'),
                     ]),
                   ),
@@ -138,6 +141,8 @@ class _CoStreamScreenState extends ConsumerState<CoStreamScreen> {
               ],
             ]),
           ),
+          const SizedBox(height: 16),
+          CoStreamParticipants(sessionId: widget.sessionId, session: costream),
           const SizedBox(height: 16),
           SectionLabel('CHAT', trailing: Text(_room, style: TextStyle(color: p.label3, fontSize: 12))),
           Panel(

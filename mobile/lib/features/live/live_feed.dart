@@ -266,3 +266,90 @@ Future<StreamKey> streamKeyAction(String action, String playerId, {String label 
     return StreamKey.fromJson(Map<String, dynamic>.from(res as Map));
   }
 }
+
+// ---------------------------------------------------------------- co-stream session + host controls (FR-3.3)
+
+class CoStreamSession {
+  final String sessionId;
+  final String status; // active | terminated
+  final String? host;
+  final List<String> participants;
+  final List<String> muted;
+  final String? spotlight;
+  final String layout;
+  final String? playbackUrl;
+  final String chatRoomId;
+  const CoStreamSession({
+    required this.sessionId,
+    required this.status,
+    required this.host,
+    required this.participants,
+    required this.muted,
+    required this.spotlight,
+    required this.layout,
+    required this.playbackUrl,
+    required this.chatRoomId,
+  });
+
+  factory CoStreamSession.fromJson(Map<String, dynamic> j) => CoStreamSession(
+        sessionId: '${j['session_id']}',
+        status: '${j['status'] ?? 'active'}',
+        host: j['active_host'] as String?,
+        participants: [for (final p in (j['active_participants'] as List? ?? const [])) '$p'],
+        muted: [for (final p in (j['muted'] as List? ?? const [])) '$p'],
+        spotlight: j['spotlight'] as String?,
+        layout: '${j['layout'] ?? 'grid_4'}',
+        playbackUrl: j['composite_playback_url'] as String?,
+        chatRoomId: '${j['chat_room_id'] ?? 'chat-${j['session_id']}'}',
+      );
+}
+
+/// Live view of a co-stream (guests can read it). Refreshed every 3 s so a host handoff shows up quickly.
+final coStreamProvider = StreamProvider.autoDispose.family<CoStreamSession?, String>((ref, sessionId) {
+  final controller = StreamController<CoStreamSession?>();
+  Timer? timer;
+  Future<void> load() async {
+    try {
+      final res = await ApiClient.get('/api/v1/costream/sessions/$sessionId');
+      controller.add(res is Map ? CoStreamSession.fromJson(Map<String, dynamic>.from(res)) : null);
+    } on ApiException catch (e) {
+      if (e.code == 'STREAM_NOT_FOUND' || e.code == 'HTTP_404') {
+        controller.add(null);
+      } else if (!controller.isClosed) {
+        controller.addError(e);
+      }
+    }
+  }
+
+  load();
+  timer = Timer.periodic(const Duration(seconds: 3), (_) => load());
+  ref.onDispose(() {
+    timer?.cancel();
+    controller.close();
+  });
+  return controller.stream;
+});
+
+/// Host / participant actions. Each returns the updated session view when the server sends one.
+class CoStreamApi {
+  static String _p(String id) => '/api/v1/costream/sessions/$id';
+
+  static Future<String?> invite(String sessionId, String playerId) async {
+    final res = await ApiClient.post('${_p(sessionId)}/invite', {'player_id': playerId});
+    return res is Map ? res['invite_token'] as String? : null;
+  }
+
+  static Future<void> join(String sessionId, String inviteToken) =>
+      ApiClient.post('${_p(sessionId)}/join', {'invite_token': inviteToken});
+
+  static Future<void> mute(String sessionId, String playerId, {required bool muted}) =>
+      ApiClient.post('${_p(sessionId)}/mute', {'player_id': playerId, 'muted': muted});
+
+  static Future<void> spotlight(String sessionId, String playerId) =>
+      ApiClient.post('${_p(sessionId)}/spotlight', {'player_id': playerId});
+
+  static Future<void> kick(String sessionId, String playerId) =>
+      ApiClient.post('${_p(sessionId)}/kick', {'player_id': playerId});
+
+  static Future<void> leave(String sessionId) => ApiClient.post('${_p(sessionId)}/leave', const <String, dynamic>{});
+}
