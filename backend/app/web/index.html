@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0E0F0C">
+  <title>Live Match | NaSCon Sports</title>
+  <link rel="stylesheet" href="/web/static/styles.css">
+  <script src="/web/static/vendor/hls.min.js" defer></script>
+  <script src="/web/static/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <a class="brand" href="/web/matches/match-m1/live" aria-label="NaSCon Sports home">
+      <span class="brand-mark" aria-hidden="true">N</span>
+      <span class="brand-name">NaSCon Sports</span>
+    </a>
+    <div class="topbar-actions">
+      <span class="guest-pill" id="guest-pill">Watching as guest</span>
+      <button class="icon-btn cart-btn" type="button" id="cart-btn" aria-label="Guest cart">
+        <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M7 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm10 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4ZM5.2 4l.4 2H21l-2.4 8.4a2 2 0 0 1-1.9 1.6H8.1a2 2 0 0 1-2-1.6L3.4 2H1V0h3.9l.3 2"/></svg>
+        <span class="cart-count" data-testid="guest-cart-count" id="guest-cart-count" aria-live="polite">0</span>
+      </button>
+    </div>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <!-- Match / co-stream live view. Every data-testid is in the initial HTML so it renders without waiting on the API. -->
+    <section class="live" id="live-view" aria-labelledby="match-title">
+      <div class="stage">
+        <div class="player" data-testid="guest-video-player" id="guest-video-player" role="region" aria-label="Live video player">
+          <video id="video" playsinline muted autoplay aria-label="Live match stream"></video>
+          <div class="player-overlay" id="player-overlay">
+            <div class="overlay-score" aria-hidden="true">
+              <span class="ov-team" id="ov-home">HOME</span>
+              <span class="ov-score" id="ov-score">0 - 0</span>
+              <span class="ov-team" id="ov-away">AWAY</span>
+            </div>
+            <span class="live-tag" id="live-tag"><span class="dot" aria-hidden="true"></span>LIVE</span>
+          </div>
+          <div class="player-empty" id="player-empty" role="status">
+            <span class="pulse" aria-hidden="true"></span>
+            <p id="player-empty-text">Connecting to the broadcast</p>
+          </div>
+          <div class="controls" role="group" aria-label="Video controls">
+            <button class="ctl" type="button" id="btn-play" aria-label="Pause video">
+              <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path id="icon-play" fill="currentColor" d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>
+            </button>
+            <button class="ctl" type="button" id="btn-mute" aria-label="Unmute video" aria-pressed="true">
+              <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path id="icon-mute" fill="currentColor" d="M4 9v6h4l5 5V4L8 9H4Zm12.6 3 2.7-2.7-1.4-1.4L15.2 10.6 12.5 7.9l-1.4 1.4 2.7 2.7-2.7 2.7 1.4 1.4 2.7-2.7 2.7 2.7 1.4-1.4L16.6 12Z"/></svg>
+            </button>
+            <span class="ctl-spacer"></span>
+            <button class="ctl" type="button" id="btn-full" aria-label="Full screen">
+              <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M4 4h6v2H6v4H4V4Zm10 0h6v6h-2V6h-4V4ZM4 14h2v4h4v2H4v-6Zm14 0h2v6h-6v-2h4v-4Z"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="scoreboard" aria-labelledby="match-title">
+          <p class="kicker" id="match-kicker">Live Match</p>
+          <h1 class="sr-only" id="match-title">Live match</h1>
+          <div class="teams">
+            <div class="team">
+              <span class="crest" id="home-crest" aria-hidden="true">H</span>
+              <span class="team-name" id="home-name">Home</span>
+            </div>
+            <div class="score-wrap">
+              <span class="state" id="match-state"><span class="dot" aria-hidden="true"></span><span id="match-state-text">LIVE</span></span>
+              <div class="score" data-testid="live-score-banner" id="live-score-banner" role="status" aria-live="polite" aria-label="Score">0 - 0</div>
+              <span class="meta" id="match-meta"></span>
+            </div>
+            <div class="team team-away">
+              <span class="crest" id="away-crest" aria-hidden="true">A</span>
+              <span class="team-name" id="away-name">Away</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="side">
+        <div class="card merch" data-testid="pinned-merch-card" id="pinned-merch-card"
+             data-product-id="prod-jersey-001" data-variant-id="var-jersey-001-L">
+          <div class="merch-art" aria-hidden="true">
+            <svg viewBox="0 0 64 64" width="56" height="56"><path fill="currentColor" d="M22 6 10 12 4 26l10 4v28h36V30l10-4-6-14-12-6c-1 5-5 8-10 8s-9-3-10-8Z"/></svg>
+          </div>
+          <div class="merch-body">
+            <p class="kicker">Pinned by the club</p>
+            <h2 class="merch-name" id="merch-name">Home Jersey</h2>
+            <p class="merch-meta"><span id="merch-variant">Size L</span> <span class="merch-price" id="merch-price">PKR 4,500</span></p>
+          </div>
+          <button class="btn btn-primary" type="button" data-testid="add-to-guest-cart-btn" id="add-to-guest-cart-btn">Add to Cart</button>
+        </div>
+
+        <div class="card chat" aria-labelledby="chat-title">
+          <div class="chat-head">
+            <h2 class="chat-title" id="chat-title">Live Chat</h2>
+            <span class="chat-room" id="chat-room"></span>
+          </div>
+          <ul class="chat-list" data-testid="chat-message-list" id="chat-message-list" tabindex="0" aria-label="Chat messages" aria-live="polite">
+            <li class="chat-empty" id="chat-empty">No messages yet. Be the first to cheer.</li>
+          </ul>
+          <form class="chat-form" id="chat-form" autocomplete="off">
+            <label class="sr-only" for="chat-input-field">Chat message</label>
+            <input class="chat-input" data-testid="chat-input-field" id="chat-input-field" type="text" maxlength="280" placeholder="Say something" aria-label="Chat message">
+            <button class="btn btn-primary chat-send" type="submit" data-testid="chat-send-btn" id="chat-send-btn" aria-label="Send chat message">Send</button>
+          </form>
+        </div>
+      </aside>
+    </section>
+
+    <!-- Player and club pages render here. -->
+    <section class="profile" id="profile-view" hidden></section>
+  </main>
+
+  <!-- Progressive registration: only opened by a protected write (chat send, checkout). Keeps the staged cart. -->
+  <div class="modal-backdrop" id="modal-backdrop" hidden></div>
+  <div class="modal" data-testid="progressive-auth-modal" id="progressive-auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title" aria-describedby="auth-desc" hidden>
+    <button class="icon-btn modal-close" type="button" id="auth-close" aria-label="Close sign in">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6l5.6-5.6L5 6.4Z"/></svg>
+    </button>
+    <h2 class="modal-title" id="auth-title">Sign in to join in</h2>
+    <p class="modal-desc" id="auth-desc">Guests can watch for free. Sign in to chat or check out. Your cart (<span id="auth-cart-count">0</span> items) and your place in the stream are kept.</p>
+    <form class="auth-form" id="auth-form" novalidate>
+      <label class="field">
+        <span>Email</span>
+        <input id="auth-email" type="email" autocomplete="email" required>
+      </label>
+      <label class="field">
+        <span>Password</span>
+        <input id="auth-password" type="password" autocomplete="current-password" required>
+      </label>
+      <p class="form-error" id="auth-error" role="alert"></p>
+      <button class="btn btn-primary btn-block" type="submit" id="auth-submit">Sign In</button>
+      <button class="btn btn-ghost btn-block" type="button" id="auth-later">Keep watching as guest</button>
+    </form>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>
