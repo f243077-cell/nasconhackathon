@@ -65,6 +65,12 @@ jobs:
           curl -fsS -X POST http://localhost:8080/audit/v1/reset > /dev/null
           python tools/ws_latency.py http://localhost:8080 5
 
+      - name: Spec conformance and platform end-to-end suites (media pipeline needs ffmpeg)
+        run: |
+          sudo apt-get install -y -qq ffmpeg > /dev/null || true
+          pip install -q pyyaml pypdf websockets
+          python -m pytest tests/e2e -q -p no:cacheprovider --junitxml=tests/reports/backend-e2e-report.xml
+
       - name: Selenium Grid suite (3 parallel sessions)
         env:
           GRID_URL: http://localhost:4444
