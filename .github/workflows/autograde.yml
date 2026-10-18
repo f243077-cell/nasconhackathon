@@ -60,6 +60,11 @@ jobs:
           python tools/day2_check.py http://localhost:8080
           python tools/smoke_day2_social.py http://localhost:8080
 
+      - name: NFR-1 real-time latency (25 WebSocket clients, p95 < 500 ms)
+        run: |
+          curl -fsS -X POST http://localhost:8080/audit/v1/reset > /dev/null
+          python tools/ws_latency.py http://localhost:8080 5
+
       - name: Selenium Grid suite (3 parallel sessions)
         env:
           GRID_URL: http://localhost:4444

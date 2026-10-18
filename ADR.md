@@ -148,6 +148,140 @@
 - Firebase or Supabase offline sync: prohibited.
 - Native Kotlin: the team knows Flutter better.
 
+## ADR-9: MediaMTX as the self-hosted media server
+
+**Context**
+- FR-3.2 needs RTMP/WHIP ingest, HLS and WebRTC playback, and recording, on a self-hosted server (MediaMTX, LiveKit or SRS).
+- Ingest must be authenticated by a stream key, and a revoke or rotate must cut the publisher within 2 s.
+
+**Decision**
+- Run `bluenviron/mediamtx:1.9.1` with RTMP on 1935, HLS on 8888 and WebRTC (WHIP/WHEP) on 8889. RTSP and SRT are off.
+- `authMethod: http` points at `POST /internal/media/auth`. Only an active, non-revoked key may publish on `live/<key>`.
+- A revoke or rotate commits first, then calls the MediaMTX control API (`/v3/.../kick/{id}`) to drop the publisher.
+- Every path records to the shared `recordings` volume. The MediaMTX image has no shell or curl, so the worker watches that volume instead of a `runOnRecordSegmentComplete` hook. A segment idle for 3 s is uploaded to the MinIO `vods` bucket and indexed with `repo/athletes.index_recording`.
+
+**Consequences**
+- One small container covers all three protocols, and the image is pinned and already pulled.
+- The key check stays in our API, so a revoked key is refused on the next publish attempt as well as kicked.
+- A VOD appears on the athlete profile about 3 to 4 s after the stream ends.
+
+**Alternatives**
+- LiveKit: a full SFU, but it needs more services and a token server.
+- SRS: no WHIP/WHEP in the version we had pulled.
+
+## ADR-10: Postgres stays the source of truth for Part II state
+
+**Context**
+- Part II adds stream keys, co-stream sessions, QR mappings and scans, guest tokens and carts, follows, chat messages, VODs and the DLQ.
+
+**Decision**
+- Every one of these is a Postgres table, created at boot and truncated by `/audit/v1/reset`.
+- Redis holds only derived or short-lived data: pub/sub fan-out, chat sequence counters, rate-limit windows, the WebSocket gauge and the QR inspect cache.
+
+**Consequences**
+- State survives an API or Redis restart, and every audit route reads the same rows the app does.
+- A Redis flush loses nothing but caches and counters that are rebuilt on the next request.
+
+**Alternatives**
+- Keep chat and keys in Redis only: faster, but lost on restart and hard to audit.
+
+## ADR-11: Follower count is derived, never stored
+
+**Context**
+- FR-3.1 needs zero follower-count drift under simultaneous follow/unfollow toggles, idempotent per `(follower_id, athlete_id)`.
+
+**Decision**
+- A `follows` table with `PRIMARY KEY (follower_id, athlete_id)`.
+- Follow is `INSERT ... ON CONFLICT DO NOTHING`; unfollow is `DELETE`. The count is `COUNT(*)`, read after the write in the same transaction.
+- The privacy delete removes the erased user's follow edges.
+
+**Consequences**
+- There is no counter to drift. Ten parallel follows by the same user still give exactly one row.
+
+**Alternatives**
+- A `follower_count` column with `+1`/`-1`: a retried or duplicated toggle drifts it.
+
+## ADR-12: Guest tokens are a separate principal, rejected for writes before routing
+
+**Context**
+- FR-4.2 and FR-4.3: a `guest_anon_tok_*` bearer may read and stage a guest cart, but every write must get 403 `GUEST_WRITE_FORBIDDEN`. Hiding buttons in the UI scores 0.
+
+**Decision**
+- A pure-ASGI check in `main.py` runs before routing, validation and the rate limiter. Any `POST/PUT/PATCH/DELETE` with a `Bearer guest_*` token is rejected with 403 `GUEST_WRITE_FORBIDDEN` and `details.guest_token`.
+- It covers all of `/api/v1/*` (except `/api/v1/guest/*`, which issues tokens) and the audit writes `/audit/v1/checkout`, `/audit/v1/events`, `/audit/v1/roster/transfer` and `/audit/v1/offline-sync`.
+- Read routes the Guest Web Player needs (`GET /api/v1/matches/{id}`, `/athletes/{id}`, `/chat`) accept a guest or no bearer.
+
+**Consequences**
+- A new write route is guarded automatically. Nobody can forget the check on one handler.
+- The cart-merge audit route exercises this same guard to report `write_rejection_code: 403`.
+
+**Alternatives**
+- A FastAPI dependency per route: easy to miss on a new route, and it runs after body validation, so a bad body would give 400 instead of 403.
+
+## ADR-13: The QR short URL is immutable; the target is computed on every read
+
+**Context**
+- FR-4.1 and hidden scenario 2: a printed QR must keep working after the match moves from `in_progress` to `completed` or `postponed`.
+- NFR-2 sends 500 viewers at `GET /audit/v1/qr/match-m1?inspect=true` for 15 s.
+
+**Decision**
+- `qr_codes` stores only `entity_id`, a stable `short_code` and the scan count. `target_route` and the signature are computed from the live event projection on each read (`domain/qr.py`).
+- `GET /q/{code}` answers 302 to the live route. Exports are SVG and PNG from `segno` and a PDF poster from `reportlab`.
+- `?inspect=true` responses are cached in Redis for 1.5 s. Any event, scan or co-stream change for that entity deletes the cache key.
+- Telemetry stores only device family and a UTC hour bucket (NFR-9).
+
+**Consequences**
+- Scenario 2 needs no migration: the same short URL now resolves to `/vod` or `/notice?state=postponed`, with a recomputed signature.
+- k6 p95 stays well under 800 ms because most inspect reads never reach Postgres.
+
+**Alternatives**
+- Store the target route: it goes stale the moment the match status changes.
+
+## ADR-14: Moderation is a pure function; kick and mute writes are idempotent
+
+**Context**
+- FR-5.3 and hidden scenario 3: 10 simultaneous moderation calls on `user-spammer` must not deadlock or duplicate the kick list.
+
+**Decision**
+- `domain/moderation.py` normalises leetspeak, masks dictionary words, and applies the flood and rate rules with no I/O. Precedence is in ADR-18.
+- Kick and mute rows go into `moderation_actions` with `PRIMARY KEY (chat_room_id, user_id, kind)` and `ON CONFLICT DO NOTHING`.
+
+**Consequences**
+- Results are deterministic and unit-tested for every dictionary word. Concurrent requests converge on `["user-spammer"]`.
+
+**Alternatives**
+- Read-modify-write a JSON list: races under concurrency.
+
+## ADR-15: Notifications retry with bounded backoff, then a persistent DLQ
+
+**Context**
+- FR-5.2: a failed delivery gets bounded exponential retry, at most 3 attempts, then a DLQ that the audit contract can inspect.
+
+**Decision**
+- `domain/notify.py` delivers with 3 attempts and exponential backoff (100 ms, then 200 ms), with the sleep injected so tests take no time.
+- After the last failure the event is written to the `dlq` table. `nascon_dlq_depth` and `dlq_status.queue_depth` both read that table.
+
+**Consequences**
+- The DLQ survives restarts and is cleared only by `/audit/v1/reset`.
+
+**Alternatives**
+- A Redis list: lost on flush, and it would need a second counter for the metric.
+
+## ADR-16: `/metrics` is a small pure formatter, not a client library
+
+**Context**
+- NFR-6 needs `GET /metrics` as `text/plain; version=0.0.4` with five named metrics. The API runs 4 uvicorn processes, so in-process counters would be split across workers.
+
+**Decision**
+- `services/metrics.py` renders HELP, TYPE and one sample per metric from values read at request time. WebSocket connections come from a Redis gauge, streams and bitrate from the MediaMTX API, the DLQ depth and QR scans from Postgres.
+- Missing values export as 0, negative gauges clamp to 0, and NaN or infinity is never exported.
+
+**Consequences**
+- Every worker returns the same numbers, and the formatter is fully unit-tested.
+
+**Alternatives**
+- `prometheus_client` with in-process collectors: each worker would report only its own connections unless multiprocess mode is set up.
+
 ## ADR-17: Co-stream layout capacity is checked after the host-drop handoff
 
 **Context**
