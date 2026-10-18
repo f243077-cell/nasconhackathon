@@ -123,7 +123,8 @@ def qr_resolve(conn, entity_id: str, inspect: bool, user_agent: str | None) -> d
     return view
 
 
-def qr_redirect(conn, code: str, user_agent: str | None) -> str:
+def qr_redirect(conn, code: str, user_agent: str | None) -> tuple[str, str]:
+    """(entity_id, live target route) for a short code; records one scan."""
     row = conn.execute("SELECT entity_id FROM qr_codes WHERE short_code = %s", (code,)).fetchone()
     if not row:
         raise ApiError(404, "QR_NOT_FOUND", "Unknown short link", {"short_code": code})
@@ -131,7 +132,7 @@ def qr_redirect(conn, code: str, user_agent: str | None) -> str:
     if ent is None:
         raise ApiError(404, "QR_NOT_FOUND", "Entity no longer exists", {"short_code": code})
     _record_scan(conn, row["entity_id"], user_agent)
-    return qr_domain.target_route(row["entity_id"], ent[1])
+    return row["entity_id"], qr_domain.target_route(row["entity_id"], ent[1])
 
 
 def qr_export_info(conn, entity_id: str) -> tuple[str, str]:
@@ -233,7 +234,8 @@ def erase_user(conn, user_id: str) -> dict:
 def metric_counts(conn) -> dict:
     return {
         "dlq": conn.execute("SELECT count(*) AS n FROM dlq").fetchone()["n"],
-        "qr": conn.execute("SELECT COALESCE(sum(scan_count), 0) AS n FROM qr_codes").fetchone()["n"],
+        # sum() is NUMERIC in Postgres (a Decimal in Python): cast so the metric is never exported as 0
+        "qr": int(conn.execute("SELECT COALESCE(sum(scan_count), 0)::bigint AS n FROM qr_codes").fetchone()["n"]),
     }
 
 

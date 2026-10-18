@@ -29,11 +29,17 @@ async def _relay(ws: WebSocket, match_id: str | None, snapshot: dict | None = No
     pubsub = r.pubsub()
     await pubsub.subscribe(config.REALTIME_CHANNEL)
     await r.incr(WS_GAUGE)
+    # Watch the client side too, so a closed socket leaves the loop (and the gauge) at once, not on the next send.
+    recv = asyncio.ensure_future(ws.receive())
     try:
         if snapshot:
             await ws.send_json(snapshot)
         while True:
-            msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+            if recv.done():
+                if recv.result().get("type") == "websocket.disconnect":
+                    break
+                recv = asyncio.ensure_future(ws.receive())
+            msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=0.2)
             if msg and msg.get("type") == "message":
                 data = json.loads(msg["data"])
                 if match_id is None or data.get("match_id") == match_id:
@@ -43,6 +49,7 @@ async def _relay(ws: WebSocket, match_id: str | None, snapshot: dict | None = No
     except (WebSocketDisconnect, RuntimeError):
         pass
     finally:
+        recv.cancel()
         await r.decr(WS_GAUGE)
         await pubsub.unsubscribe(config.REALTIME_CHANNEL)
         await r.aclose()

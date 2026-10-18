@@ -101,7 +101,8 @@ def qr_export_route(entity_id: str, fmt: str):
 
 @router.get("/q/{short_code}")
 def short_link(short_code: str, user_agent: str | None = Header(default=None)):
-    route = run_tx(day2_repo.qr_redirect, short_code, user_agent)
+    entity_id, route = run_tx(day2_repo.qr_redirect, short_code, user_agent)
+    bus.invalidate_qr(entity_id)  # after commit: the next ?inspect read shows this scan
     return RedirectResponse(url=route, status_code=302)
 
 

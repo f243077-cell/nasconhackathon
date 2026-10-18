@@ -51,6 +51,40 @@ Set the server address on the app's Settings screen:
 - Emulator: `http://10.0.2.2:8080`
 - Physical phone: `http://<laptop-LAN-IP>:8080`
 
+## Part II (Day 2): streaming, QR, guest web, grid QA
+
+```sh
+DAY1_SALT=<s1> DAY2_SALT=<s2> docker compose up -d --build   # API, DB, Redis, MinIO, MediaMTX, Selenium hub + 3 nodes
+```
+
+| Service | Address |
+|---|---|
+| API, Guest Web Player (`/web/*`), `/metrics` | `http://localhost:8080` |
+| MediaMTX: RTMP ingest / HLS / WebRTC (WHIP, WHEP) | `rtmp://localhost:1935/live/<stream_key>`, `http://localhost:8888`, `http://localhost:8889` |
+| Selenium Grid 4 hub (3 nodes) | `http://localhost:4444/status` |
+| Appium 2 (on the phone laptop) | `http://localhost:4723/status` |
+
+Streaming: create a key with `POST /audit/v1/stream/key`, then publish from OBS/FFmpeg to
+`rtmp://localhost:1935/live/<stream_key>`. Only active keys may publish; revoke or rotate kicks the publisher within 2 s.
+Finished recordings are uploaded to MinIO (`vods` bucket) and listed on `GET /api/v1/athletes/{player_id}`.
+
+Checks and QA (run against the live stack, then `POST /audit/v1/reset`):
+
+```sh
+DAY2_SALT=<s2> python tools/day2_check.py           # every /audit/v1 Part II contract + the 4 hidden scenarios
+DAY2_SALT=<s2> python tools/smoke_day2_social.py    # co-stream, cart merge, moderation, athletes
+python tools/ws_latency.py                          # NFR-1: 25 WebSocket clients, p95 < 500 ms
+pytest -n 3 tests/selenium/                         # Guest Web Player on the grid -> tests/reports/selenium-report.xml
+k6 run --summary-export=tests/reports/k6-summary.json tests/k6_load.js   # NFR-2
+pytest tests/appium/                                # phone on USB + Appium 2 on 4723
+```
+
+`./run_tests.sh` also writes `COVERAGE_DAY2.json`. GitHub Actions (`.github/workflows/autograde.yml`) runs all of this
+on every push to `main`; it reads `DAY1_SALT` and `DAY2_SALT` from the repository secrets.
+
+Phone over USB without a LAN: `adb reverse tcp:8080 tcp:8080` (and `8888`, `8889`, `1935` for streaming), then set the
+app's server address to `http://127.0.0.1:8080`. Deep links: `adb shell am start -W -a android.intent.action.VIEW -d "nascon://entity/match-m1"`.
+
 ## Documentation
 
 | File | What it covers |
