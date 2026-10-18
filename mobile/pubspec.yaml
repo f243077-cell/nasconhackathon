@@ -63,13 +63,38 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
-  assets:
-    - assets/crests/
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  assets:
+    - assets/crests/
+    - assets/players/
+
+  # Floodlight design type: Barlow (UI text) and Barlow Condensed (headlines, scores, labels). SIL OFL, see assets/fonts/OFL.txt.
+  fonts:
+    - family: Barlow
+      fonts:
+        - asset: assets/fonts/Barlow-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Barlow-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Barlow-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Barlow-Bold.ttf
+          weight: 700
+    - family: BarlowCondensed
+      fonts:
+        - asset: assets/fonts/BarlowCondensed-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/BarlowCondensed-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/BarlowCondensed-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/BarlowCondensed-ExtraBold.ttf
+          weight: 800
 
   # To add assets to your application, add an assets section, like this:
   # assets:
