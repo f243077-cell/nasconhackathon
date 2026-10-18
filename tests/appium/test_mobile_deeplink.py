@@ -133,7 +133,7 @@ def test_deeplink_while_running_reuses_app(driver):
 def _chat_route_available():
     req = urllib.request.Request(f"{API_BASE}/api/v1/chat", data=b"{}", method="POST", headers={"Content-Type": "application/json"})
     try:
-        urllib.request.urlopen(req, timeout=4)
+        urllib.request.urlopen(req, timeout=10)
         return True
     except urllib.error.HTTPError as e:
         return e.code not in (404, 405)
