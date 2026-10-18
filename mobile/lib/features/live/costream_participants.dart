@@ -85,7 +85,23 @@ class _CoStreamParticipantsState extends ConsumerState<CoStreamParticipants> {
     final me = ref.watch(sessionProvider)?.user.playerId;
 
     if (s == null) {
-      return Panel(child: Text('Waiting for the hosts to go live.', style: TextStyle(color: p.label2, fontSize: 14)));
+      return Panel(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text(me == null ? 'Waiting for the hosts to go live.' : 'Nobody is hosting this co-stream yet.',
+              style: TextStyle(color: p.label2, fontSize: 14)),
+          if (me != null) ...[
+            const SizedBox(height: 12),
+            PrimaryButton(
+              label: 'Start as Host',
+              icon: Icons.podcasts_rounded,
+              loading: _busy,
+              onPressed: _busy
+                  ? null
+                  : () => _act(() => CoStreamApi.create(widget.sessionId, me), "You're hosting. Invite up to 3 co-hosts."),
+            ),
+          ],
+        ]),
+      );
     }
     if (s.status != 'active') {
       return Panel(child: Text('This co-stream has ended.', style: TextStyle(color: p.label2, fontSize: 14)));
