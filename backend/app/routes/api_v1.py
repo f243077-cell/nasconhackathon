@@ -402,3 +402,10 @@ def league_knockout(league_id: str, body=Depends(json_body), p: dict = Depends(p
     bracket = fixtures_domain.generate({"format": "single_elim", "teams": seeds,
                                         "params": {"third_place_match": bool(body.get("third_place_match", False))}})
     return {"league_id": league_id, "seeds": seeds, "bracket": bracket}
+
+
+@router.post("/chat")
+def post_chat(body=Depends(json_body), p: dict = Depends(principal)):
+    """Member chat post (FR-3.3, FR-5.3); anonymous guest tokens are refused earlier with GUEST_WRITE_FORBIDDEN."""
+    from ..repo import day2 as day2_repo
+    return respond(201, run_tx(day2_repo.post_chat, p, body))

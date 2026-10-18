@@ -4,10 +4,11 @@ from datetime import datetime, timezone
 
 from .. import config
 from ..canonical import sign_day2
+from ..domain import moderation as moderation_domain
 from ..domain import qr as qr_domain
 from ..domain import streaming
 from ..errors import ApiError
-from ..services import media
+from ..services import bus, media
 from ..validate import now_iso
 from . import events as events_repo
 
@@ -140,6 +141,50 @@ def qr_export_info(conn, entity_id: str) -> tuple[str, str]:
         raise ApiError(404, "QR_NOT_FOUND", "No QR code for this entity", {"entity_id": entity_id})
     mapping = _mapping(conn, entity_id, create=True)
     return short_url(mapping["short_code"]), f"NaSCon {ent[0].title()}: {entity_id}"
+
+
+# ------------------------------------------------------------------ member chat (FR-3.3, FR-5.3)
+def dlq_status(conn, limit: int = 100) -> dict:
+    depth = conn.execute("SELECT count(*) AS n FROM dlq").fetchone()["n"]
+    rows = conn.execute("SELECT id, event, attempts, created_at FROM dlq ORDER BY id DESC LIMIT %s", (limit,)).fetchall()
+    events = [dict(json.loads(r["event"]), dlq_id=r["id"], attempts=r["attempts"], failed_at=r["created_at"])
+              for r in reversed(rows)]
+    return {"queue_depth": depth, "undelivered_events": events}
+
+
+def dead_letter(conn, event: dict, attempts: int) -> None:
+    conn.execute("INSERT INTO dlq (event, attempts, created_at) VALUES (%s, %s, %s)",
+                 (json.dumps(event), attempts, now_iso()))
+
+
+def store_chat(conn, room: str, messages: list[dict]) -> None:
+    """Persist broadcast messages with one monotonically increasing sequence per room (FR-3.3) and publish them."""
+    for m in messages:
+        try:
+            seq = int(bus.client().incr(f"chat:seq:{room}"))
+        except Exception:  # noqa: BLE001  fall back to the table when Redis is unavailable
+            seq = conn.execute("SELECT COALESCE(max(seq), 0) + 1 AS n FROM chat_messages WHERE chat_room_id = %s",
+                               (room,)).fetchone()["n"]
+        conn.execute("INSERT INTO chat_messages (chat_room_id, seq, message_id, sender, text, flagged, reason, created_at) "
+                     "VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
+                     (room, seq, m["message_id"], m["sender"], m["text"], m["flagged"], m["reason"], now_iso()))
+        bus.publish_realtime("chat_message", None, dict(m, chat_room_id=room, seq=seq))
+
+
+def post_chat(conn, principal: dict, body) -> dict:
+    """Member chat post (/api/v1/chat): the same moderation rules, then broadcast."""
+    if not isinstance(body, dict) or not isinstance(body.get("chat_room_id"), str) or not isinstance(body.get("text"), str):
+        from ..errors import validation_error
+        raise validation_error(["chat_room_id", "text"], "chat_room_id and text are required")
+    msg = {"message_id": body.get("message_id") or f"m-{now_iso()}-{principal['sub']}", "sender": principal["sub"],
+           "text": body["text"]}
+    moderation_domain.validate_request({"chat_room_id": body["chat_room_id"], "incoming_messages": [msg]})
+    result = moderation_domain.moderate([msg])
+    store_chat(conn, body["chat_room_id"], result["filtered_messages"])
+    if not result["filtered_messages"]:
+        return {"chat_room_id": body["chat_room_id"], "delivered": False,
+                "reason": result["blocked"][0]["reason"] if result["blocked"] else None}
+    return {"chat_room_id": body["chat_room_id"], "delivered": True, "message": result["filtered_messages"][0]}
 
 
 # ------------------------------------------------------------------ privacy (NFR-9)
