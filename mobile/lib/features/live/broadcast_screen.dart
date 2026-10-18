@@ -61,6 +61,28 @@ class _BroadcastScreenState extends ConsumerState<BroadcastScreen> {
     }
   }
 
+  /// Creates the session with this player as host (grid_4), then opens it. Already exists -> just open it.
+  Future<void> _startCoStream() async {
+    final id = _session.text.trim();
+    final me = ref.read(sessionProvider)?.user.playerId;
+    if (id.isEmpty || me == null) return;
+    setState(() => _busy = true);
+    try {
+      await CoStreamApi.create(id, me);
+      if (mounted) showSuccess(context, "You're hosting $id. Invite up to 3 co-hosts.");
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      // An existing session (e.g. the demo one) is fine to open; anything else is shown plainly.
+      if (e.code != 'HTTP_409' && e.code != 'VALIDATION_ERROR') {
+        showError(context, e);
+        return;
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+    if (mounted) context.push('/costream/$id');
+  }
+
   void _copy(String what, String value) {
     Clipboard.setData(ClipboardData(text: value));
     showSuccess(context, '$what copied.');
@@ -147,6 +169,13 @@ class _BroadcastScreenState extends ConsumerState<BroadcastScreen> {
                 const SizedBox(height: 12),
                 TextField(controller: _session, decoration: const InputDecoration(labelText: 'Session ID')),
                 const SizedBox(height: 12),
+                PrimaryButton(
+                  label: 'Start Co-Stream',
+                  icon: Icons.podcasts_rounded,
+                  loading: _busy,
+                  onPressed: _busy ? null : _startCoStream,
+                ),
+                const SizedBox(height: 10),
                 SecondaryButton(
                   label: 'Open Co-Stream',
                   icon: Icons.grid_view_rounded,

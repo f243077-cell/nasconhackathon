@@ -341,6 +341,15 @@ final coStreamProvider = StreamProvider.autoDispose.family<CoStreamSession?, Str
 class CoStreamApi {
   static String _p(String id) => '/api/v1/costream/sessions/$id';
 
+  /// Start a co-stream as its host (the server only allows hosting as your own player).
+  static Future<void> create(String sessionId, String hostPlayerId, {String layout = 'grid_4'}) =>
+      ApiClient.post('/api/v1/costream/sessions', {
+        'session_id': sessionId,
+        'host_player_id': hostPlayerId,
+        'participants': [hostPlayerId],
+        'layout': layout,
+      });
+
   static Future<String?> invite(String sessionId, String playerId) async {
     final res = await ApiClient.post('${_p(sessionId)}/invite', {'player_id': playerId});
     return res is Map ? res['invite_token'] as String? : null;
