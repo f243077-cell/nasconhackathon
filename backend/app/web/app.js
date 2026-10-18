@@ -328,7 +328,10 @@
       const r = await http("POST", "/api/v1/chat", { body: { room_id: chatRoom, chat_room_id: chatRoom, text }, token: memberToken });
       if (r.ok) {
         $("chat-input-field").value = "";
-        if (r.data) appendChat({ sender: "You", ...r.data, text: r.data.text || text });
+        // Show the server's moderated copy (profanity already ***), never the typed text.
+        const d = r.data || {};
+        if (d.delivered === false) toast("Message blocked: please don't spam or repeat characters.");
+        else if (d.message) appendChat({ sender: "You", ...d.message });
       } else if (r.status === 401 || r.status === 403) {
         memberToken = null; store.set("nascon.member_token", null); openAuth("chat");
       } else if (r.status === 429) {

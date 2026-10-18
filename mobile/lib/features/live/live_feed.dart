@@ -229,7 +229,11 @@ final chatProvider = StreamProvider.autoDispose.family<List<ChatMessage>, String
 /// POST /api/v1/chat. A guest gets 403 GUEST_WRITE_FORBIDDEN from the server (rethrown for the UI).
 Future<ChatMessage?> sendChat(String roomId, String text) async {
   final res = await ApiClient.post('/api/v1/chat', {'room_id': roomId, 'chat_room_id': roomId, 'text': text});
-  return res is Map ? ChatMessage.fromJson({'sender': 'You', ...Map<String, dynamic>.from(res), 'text': res['text'] ?? text}) : null;
+  // Show the server's moderated copy (profanity already ***), never the typed text. A blocked message
+  // (flood / rate) comes back delivered:false and is not shown.
+  final msg = res is Map ? res['message'] : null;
+  if (res is! Map || res['delivered'] == false || msg is! Map) return null;
+  return ChatMessage.fromJson({'sender': 'You', ...Map<String, dynamic>.from(msg)});
 }
 
 // ---------------------------------------------------------------- broadcaster
