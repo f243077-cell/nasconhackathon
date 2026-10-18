@@ -241,6 +241,46 @@ def host_controls():
           and b.get("signature"), (s, b))
 
 
+def host_disconnect():
+    """Hidden scenario 1 over a real socket: the host's presence WebSocket drops -> next participant hosts
+    within 1.5 s, same chat room. Also: a member posting > 3 chat messages in 2 s gets 429 RATE_LIMITED."""
+    import asyncio
+    import time
+
+    import websockets  # in backend/requirements.txt (uvicorn[standard])
+    s, b = call("POST", "/api/v1/auth/login", {"email": "player@nascon.test", "password": "Nascon@26"})
+    token = b.get("token")
+    s, b = call("POST", "/api/v1/costream/sessions", {"session_id": "cs-ws-1", "host_player_id": "player-alpha-1",
+                                                      "participants": ["player-alpha-1", "player-alpha-2",
+                                                                       "player-beta-1"]}, token=token)
+    check("presence: session created", s == 201, (s, b))
+    ws_base = BASE.replace("http://", "ws://").replace("https://", "wss://")
+
+    async def host_socket():
+        async with websockets.connect(f"{ws_base}/api/v1/costream/sessions/cs-ws-1/ws?token={token}") as ws:
+            first = json.loads(await asyncio.wait_for(ws.recv(), 3))
+            return first
+
+    first = asyncio.run(host_socket())          # the socket closes when this returns
+    dropped = time.monotonic()
+    check("presence: snapshot on connect", first.get("type") == "costream_snapshot"
+          and first["data"].get("active_host") == "player-alpha-1", first)
+    view = {}
+    while time.monotonic() - dropped < 3:
+        view = call("GET", "/api/v1/costream/sessions/cs-ws-1")[1]
+        if view.get("active_host") == "player-alpha-2":
+            break
+        time.sleep(0.05)
+    took = time.monotonic() - dropped
+    check(f"presence: host drop -> participants[1] hosts within 1.5 s ({took:.2f} s)",
+          view.get("active_host") == "player-alpha-2" and took <= 1.5 and view.get("participant_count") == 2
+          and view.get("chat_room_id") == "chat-cs-ws-1", view)
+
+    codes = [call("POST", "/api/v1/chat", {"chat_room_id": "chat-cs-ws-1", "text": f"hi {i}"}, token=token)[0]
+             for i in range(5)]
+    check("chat: 4th message inside 2 s -> 429 RATE_LIMITED", codes[:3] == [201] * 3 and 429 in codes[3:], codes)
+
+
 def main():
     if not SALT:
         print("Set DAY2_SALT to the stack's salt to check signatures.")
@@ -251,6 +291,7 @@ def main():
     moderation()
     athletes()
     host_controls()
+    host_disconnect()
     print(f"\n{len(FAILS)} failed" if FAILS else "\nALL PASS")
     sys.exit(1 if FAILS else 0)
 

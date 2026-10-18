@@ -181,6 +181,8 @@ def post_chat(conn, principal: dict, body) -> dict:
         raise validation_error(["chat_room_id", "text"], "chat_room_id and text are required")
     msg = {"message_id": body.get("message_id") or f"m-{now_iso()}-{principal['sub']}", "sender": principal["sub"],
            "text": body["text"]}
+    from . import social  # late import: social imports services that import this module's peers
+    social.chat_rate_check(body["chat_room_id"], principal["sub"])  # > 3 msgs / 2 s -> 429 RATE_LIMITED
     moderation_domain.validate_request({"chat_room_id": body["chat_room_id"], "incoming_messages": [msg]})
     result = moderation_domain.moderate([msg])
     store_chat(conn, body["chat_room_id"], result["filtered_messages"])

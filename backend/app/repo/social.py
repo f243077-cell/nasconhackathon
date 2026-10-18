@@ -202,3 +202,26 @@ def moderation_test(conn, body) -> dict:
     resp["signature"] = sign_day2(room, mod_domain.sig_payload(room, out["flagged_count"], out["kicked_users"],
                                                                dlq["queue_depth"]))
     return resp
+
+
+# ------------------------------------------------------------------ member chat flood limit (FR-5.3, Appendix B 429)
+def chat_rate_check(room: str, sender: str, now: float | None = None) -> None:
+    """More than 3 messages in a 2 s sliding window from one sender in one room -> 429 RATE_LIMITED.
+    The window lives in Redis (a sorted set of send times); if Redis is down the check is skipped."""
+    import time as _time
+    now = _time.time() if now is None else now
+    key = f"chat:rate:{room}:{sender}"
+    try:
+        r = bus.client()
+        r.zremrangebyscore(key, 0, now - mod_domain.RATE_WINDOW_S)
+        recent = [float(t) for t in r.zrange(key, 0, -1)]
+        if mod_domain.rate_exceeded(recent, now):
+            retry = max(0.1, round(mod_domain.RATE_WINDOW_S - (now - min(recent)), 2))
+            raise ApiError(429, "RATE_LIMITED", "You're sending messages too fast", {"retry_after": retry,
+                                                                                     "reason": mod_domain.REASON_RATE})
+        r.zadd(key, {repr(now): now})
+        r.expire(key, int(mod_domain.RATE_WINDOW_S) + 1)
+    except ApiError:
+        raise
+    except Exception:  # noqa: BLE001  the limiter must never take chat down
+        return
