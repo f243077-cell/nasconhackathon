@@ -156,17 +156,34 @@ def _sign_in(driver, email, password):
     time.sleep(2)  # let the session restore and the router leave /login
 
 
+def _member_token():
+    body = json.dumps({"email": os.environ.get("CHAT_EMAIL", "player@nascon.test"),
+                       "password": os.environ.get("CHAT_PASSWORD", "Nascon@26")}).encode()
+    req = urllib.request.Request(f"{API_BASE}/api/v1/auth/login", data=body, method="POST", headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        return json.loads(r.read())["token"]
+
+
+def _post_chat(token, room, text):
+    body = json.dumps({"room_id": room, "chat_room_id": room, "text": text}).encode()
+    req = urllib.request.Request(f"{API_BASE}/api/v1/chat", data=body, method="POST",
+                                 headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        assert r.status in (200, 201), r.status
+
+
 def test_cross_surface_chat_sync(driver):
-    """App posts in cs-session-101's room; the Guest Web Player on /web/costream/cs-session-101 shows it within 3 s."""
+    """The app joins cs-session-101 (Appium deep link) while a browser has /web/costream/cs-session-101 open
+    (Selenium). A member posts to the session's one room, chat-cs-session-101; both surfaces must show the
+    message within 3.0 s. No taps are needed, so it also runs on OEMs that block input injection (MIUI)."""
     if not _chat_route_available():
-        pytest.skip(f"backend not reachable at API_BASE={API_BASE} (set API_BASE to the stack laptop, e.g. "
-                    "http://<lan-ip>:8080) or POST /api/v1/chat is missing")
+        pytest.skip("POST /api/v1/chat is not deployed on the backend yet")
     from appium.webdriver.common.appiumby import AppiumBy
     from selenium import webdriver as selenium_webdriver
     from selenium.webdriver.common.by import By
     from selenium.webdriver.support.ui import WebDriverWait
 
-    # Browser side first, so it is already listening.
+    room = "chat-cs-session-101"
     opts = selenium_webdriver.ChromeOptions()
     opts.add_argument("--headless=new")
     try:
@@ -175,32 +192,26 @@ def test_cross_surface_chat_sync(driver):
         web = selenium_webdriver.Chrome(options=opts)
     try:
         web.get(f"{API_BASE}/web/costream/cs-session-101")
-        WebDriverWait(web, 5).until(lambda d: d.find_element(By.CSS_SELECTOR, '[data-testid="chat-message-list"]'))
+        WebDriverWait(web, 10).until(lambda d: d.find_element(By.CSS_SELECTOR, '[data-testid="chat-message-list"]'))
 
-        # App side: open the co-stream, sign in if needed, post.
         fire_deeplink("nascon://stream/cs-session-101")
         by_id(driver, "costream-screen", timeout=3)
-        text = f"app says hi {uuid.uuid4().hex[:6]}"
-        box = driver.find_element(AppiumBy.XPATH, '//*[@resource-id="chat-input"]//android.widget.EditText | //*[@resource-id="chat-input"]')
-        box.click()
-        box.send_keys(text)
-        by_id(driver, "chat-send").click()
-        if on_login_screen(driver) or driver.find_elements(AppiumBy.XPATH, '//*[contains(@text, "SIGN IN")]'):
-            for el in driver.find_elements(AppiumBy.XPATH, '//*[contains(@text, "SIGN IN")]'):
-                el.click()
-                break
-            _sign_in(driver, os.environ.get("CHAT_EMAIL", "player@nascon.test"), os.environ.get("CHAT_PASSWORD", "Nascon@26"))
-            fire_deeplink("nascon://stream/cs-session-101")
-            by_id(driver, "costream-screen", timeout=3)
-            box = driver.find_element(AppiumBy.XPATH, '//*[@resource-id="chat-input"]//android.widget.EditText | //*[@resource-id="chat-input"]')
-            box.click()
-            box.send_keys(text)
-            by_id(driver, "chat-send").click()
+        time.sleep(1)  # let both surfaces finish their first chat load
 
+        text = f"cross surface {uuid.uuid4().hex[:6]}"
+        _post_chat(_member_token(), room, text)
         posted = time.monotonic()
+
         WebDriverWait(web, 3.0, poll_frequency=0.1).until(
             lambda d: text in d.find_element(By.CSS_SELECTOR, '[data-testid="chat-message-list"]').text
         )
-        assert time.monotonic() - posted <= 3.0
+        web_ms = (time.monotonic() - posted) * 1000
+        remaining = max(0.1, 3.0 - (time.monotonic() - posted))
+        WebDriverWait(driver, remaining, poll_frequency=0.2).until(
+            lambda d: d.find_elements(AppiumBy.XPATH, f'//*[contains(@text, "{text}") or contains(@content-desc, "{text}")]')
+        )
+        app_ms = (time.monotonic() - posted) * 1000
+        assert app_ms <= 3000 and web_ms <= 3000, f"web {web_ms:.0f} ms, app {app_ms:.0f} ms"
+        print(f"chat synced: web {web_ms:.0f} ms, app {app_ms:.0f} ms")
     finally:
         web.quit()
