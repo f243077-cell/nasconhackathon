@@ -159,6 +159,7 @@
 - `authMethod: http` points at `POST /internal/media/auth`. Only an active, non-revoked key may publish on `live/<key>`.
 - A revoke or rotate commits first, then calls the MediaMTX control API (`/v3/.../kick/{id}`) to drop the publisher.
 - Every path records to the shared `recordings` volume. The MediaMTX image has no shell or curl, so the worker watches that volume instead of a `runOnRecordSegmentComplete` hook. A segment idle for 3 s is uploaded to the MinIO `vods` bucket and indexed with `repo/athletes.index_recording`.
+- The co-stream composite (`http://<host>:8888/costream/<session_id>/index.m3u8`) is a MediaMTX `runOnDemand` FFmpeg publisher on `costream/*` (image `mediamtx:1.9.1-ffmpeg`): started by the first viewer, stopped by MediaMTX once the last viewer has gone (`runOnDemandCloseAfter`), so no FFmpeg process outlives its audience. It is a placeholder composite (test pattern + tone); mixing the hosts' `live/<key>` feeds with `xstack` is the next step.
 - The VOD row stores the `s3://vods/live/<key>/<segment>` URI, and `GET /api/v1/vods/{vod_id}/media` streams it back from MinIO.
 - `POST /internal/media/recorded` is published on 8080 like every API route, so it is locked down: disabled (404) unless `MEDIA_HOOK_TOKEN` is set, then it needs a matching `X-Media-Hook-Token` (constant-time compare, else 403) and only accepts `segment_path` values under `/recordings/` or `s3://` (else 400).
 

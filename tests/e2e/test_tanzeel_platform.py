@@ -165,6 +165,22 @@ def test_selenium_grid_ready_with_three_nodes():
     assert s == 200 and b["value"]["ready"] is True and len(b["value"]["nodes"]) >= 3
 
 
+def test_costream_composite_playback_is_alive():
+    """FR-3.3 / scenario 1: the composite URL serves HLS on demand (FFmpeg started and stopped by MediaMTX)."""
+    s, b, _ = call("POST", "/audit/v1/costream/session", {"session_id": "cs-session-101", "host_player_id": "player-alpha-1",
+                   "participants": ["player-alpha-1", "player-alpha-2", "player-beta-1", "player-beta-2"],
+                   "layout": "grid_4", "simulate_host_drop": True})
+    url = b["composite_playback_url"].replace("http://localhost:8888", HLS)
+
+    def alive():
+        try:
+            with urllib.request.urlopen(url, timeout=15) as r:
+                return r.status == 200 and b"#EXTM3U" in r.read()
+        except Exception:  # noqa: BLE001
+            return False
+    assert wait_until(alive, 30), url
+
+
 @pytest.mark.parametrize("port", [1935, 8888, 8889, 4444, 8080])
 def test_mandatory_ports_accept_connections(port):
     with socket.create_connection(("localhost", port), timeout=3):
@@ -222,11 +238,12 @@ def test_media_auth_hook_rules():
 
 @needs_ffmpeg
 def test_rtmp_publish_hls_playback_metrics_then_revoke_kicks_within_2s():
+    base = metric("nascon_active_streams_total")   # an on-demand co-stream composite may still be closing
     key = new_key()
     proc = publisher(key)
     try:
         assert wait_until(lambda: hls_ready(key), 20), "HLS manifest never became available"
-        assert wait_until(lambda: metric("nascon_active_streams_total") >= 1, 10)
+        assert wait_until(lambda: metric("nascon_active_streams_total") >= base + 1, 10)
         metric("nascon_stream_bitrate_kbps")
         time.sleep(1.5)
         assert wait_until(lambda: metric("nascon_stream_bitrate_kbps") > 0, 10), "bitrate stayed 0 while publishing"
@@ -236,7 +253,7 @@ def test_rtmp_publish_hls_playback_metrics_then_revoke_kicks_within_2s():
         proc.wait(timeout=10)
         cut = time.monotonic() - t0
         assert cut <= 2.0, f"publisher still connected {cut:.2f} s after revoke"
-        assert wait_until(lambda: metric("nascon_active_streams_total") == 0, 10)
+        assert wait_until(lambda: metric("nascon_active_streams_total") <= base, 10)
     finally:
         if proc.poll() is None:
             proc.kill()

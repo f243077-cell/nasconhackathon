@@ -99,7 +99,8 @@ services:
     restart: unless-stopped
 
   mediamtx:
-    image: bluenviron/mediamtx:1.9.1
+    # -ffmpeg variant: same MediaMTX 1.9.1 plus ffmpeg for the on-demand co-stream composite (FR-3.3)
+    image: bluenviron/mediamtx:1.9.1-ffmpeg
     volumes:
       - ./media/mediamtx.yml:/mediamtx.yml:ro
       - recordings:/recordings
@@ -108,6 +109,12 @@ services:
       - "8888:8888"
       - "8889:8889"
       - "8189:8189/udp"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9997/v3/paths/list || exit 1"]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+      start_period: 10s
     restart: unless-stopped
 
   selenium-hub:
