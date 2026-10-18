@@ -1,4 +1,9 @@
-"""Aggregate a coverage.py JSON report into the six graded areas (spec 9.3). Prints COVERAGE.json content."""
+"""Aggregate a coverage.py JSON report into graded areas.
+
+Usage: coverage_areas.py <coverage.json> [day1|day2]
+  day1 (default): the six Part I areas (spec 9.3) -> COVERAGE.json
+  day2: the five Part II modules (spec II 7) -> COVERAGE_DAY2.json
+"""
 import fnmatch
 import json
 import sys
@@ -12,11 +17,19 @@ AREAS = {
     "rbac": ["app/auth/*.py"],
 }
 
+AREAS_DAY2 = {
+    "streaming": ["app/domain/streaming.py"],
+    "costream": ["app/domain/costream.py"],
+    "qr_guest": ["app/domain/qr.py", "app/domain/guest_cart.py"],
+    "moderation_dlq": ["app/domain/moderation.py", "app/domain/notify.py"],
+    "observability": ["app/services/metrics.py"],
+}
 
-def main(path: str) -> None:
+
+def main(path: str, which: str = "day1") -> None:
     files = json.load(open(path, encoding="utf-8"))["files"]
     out = {}
-    for area, patterns in AREAS.items():
+    for area, patterns in (AREAS_DAY2 if which == "day2" else AREAS).items():
         covered = total = 0
         for name, data in files.items():
             norm = name.replace("\\", "/")
@@ -32,4 +45,4 @@ def main(path: str) -> None:
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    main(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else "day1")

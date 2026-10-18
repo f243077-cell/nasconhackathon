@@ -7,11 +7,10 @@ from ..canonical import canonical, sign_day2
 from ..domain import costream as costream_domain
 from ..domain import guest_cart as cart_domain
 from ..domain import moderation as mod_domain
+from ..domain import notify
 from ..validate import now_iso
 
 MEDIA_HLS_BASE = f"http://{config.MEDIA_PUBLIC_HOST}:8888"
-DLQ_MAX_ATTEMPTS = 3          # FR-5.2: bounded retry, then the dead-letter queue
-DLQ_BACKOFF_MS = (100, 200, 400)
 DLQ_REPORT_LIMIT = 100
 
 
@@ -101,12 +100,15 @@ def cart_merge(conn, body) -> tuple[int, dict]:
 
 # ------------------------------------------------------------------ moderation + DLQ (5.8)
 def _enqueue_failed(conn, room: str, count: int) -> None:
-    """Notifications that exhausted their retries: one DLQ row each, attempts = max."""
+    """Simulated failed notifications: each goes through the real retry policy against a disconnected
+    subscriber (no real waiting), exhausts its attempts and lands in the DLQ."""
+    def unreachable():
+        raise ConnectionError("subscriber_unreachable")
     for i in range(count):
-        event = {"type": "chat_notification", "chat_room_id": room, "attempts": DLQ_MAX_ATTEMPTS,
-                 "backoff_ms": list(DLQ_BACKOFF_MS), "last_error": "subscriber_unreachable", "index": i + 1}
+        result = notify.deliver(unreachable, sleep=lambda _s: None)
+        event = notify.dlq_event("chat_notification", room, result, chat_room_id=room, index=i + 1)
         conn.execute("INSERT INTO dlq (event, attempts, created_at) VALUES (%s, %s, %s)",
-                     (json.dumps(event), DLQ_MAX_ATTEMPTS, now_iso()))
+                     (json.dumps(event), result["attempts"], now_iso()))
 
 
 def _dlq_status(conn) -> dict:

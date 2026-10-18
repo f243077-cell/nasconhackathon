@@ -8,6 +8,7 @@ from ..db import tx
 from ..errors import ApiError, validation_error
 from ..repo import day2 as day2_repo
 from ..services import bus, media, qr_export
+from ..services import metrics as metrics_text
 from ..validate import is_id
 from .common import json_body, respond, run_tx
 
@@ -81,16 +82,14 @@ def metrics():
         ws = int(bus.client().get("metrics:ws_active") or 0)
     except Exception:  # noqa: BLE001
         ws = 0
-    lines = []
-    for name, kind, help_, value in (
-        ("nascon_active_ws_connections", "gauge", "Open WebSocket connections", max(ws, 0)),
-        ("nascon_active_streams_total", "gauge", "Live streams currently publishing", streams),
-        ("nascon_stream_bitrate_kbps", "gauge", "Aggregate inbound stream bitrate in kbps", kbps),
-        ("nascon_dlq_depth", "gauge", "Undelivered notifications in the dead-letter queue", counts["dlq"]),
-        ("nascon_qr_scans_total", "counter", "Total dynamic QR scans", counts["qr"]),
-    ):
-        lines += [f"# HELP {name} {help_}", f"# TYPE {name} {kind}", f"{name} {value}"]
-    return Response(content="\n".join(lines) + "\n", headers={"Content-Type": "text/plain; version=0.0.4"})
+    body = metrics_text.render({
+        "nascon_active_ws_connections": ws,
+        "nascon_active_streams_total": streams,
+        "nascon_stream_bitrate_kbps": kbps,
+        "nascon_dlq_depth": counts["dlq"],
+        "nascon_qr_scans_total": counts["qr"],
+    })
+    return Response(content=body, headers={"Content-Type": metrics_text.CONTENT_TYPE})
 
 
 @router.delete("/audit/v1/privacy/user/{user_id}")
