@@ -166,6 +166,7 @@ app.include_router(rbac.router)
 app.include_router(api_v1.router)
 app.include_router(athletes.router)
 app.include_router(costream.router)
+app.include_router(costream.viewer_router)
 app.include_router(streaming.router)
 app.include_router(ws.router)
 if web.WEB_DIR.exists():

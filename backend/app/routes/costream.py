@@ -146,3 +146,49 @@ async def presence(ws: WebSocket, session_id: str, token: str | None = None):
 def _view(session_id: str) -> dict:
     with tx() as conn:
         return social_repo.session_view(conn, session_id)
+
+
+# ------------------------------------------------------------------ guest viewers (FR-3.3 unified chat, FR-4.2)
+viewer_router = APIRouter()
+
+
+@viewer_router.websocket("/ws/costream/{session_id}")
+async def costream_feed(ws: WebSocket, session_id: str):
+    """Read-only feed for the Guest Web Player on /web/costream/{id}: session updates and the room's chat
+    (chat-{session_id}), open to guests. The session may not exist yet (a viewer can arrive before the host)."""
+    await ws.accept()
+    try:
+        snapshot = await asyncio.to_thread(_view, session_id)
+    except ApiError:
+        snapshot = None
+    r = aioredis.from_url(config.REDIS_URL)
+    pubsub = r.pubsub()
+    await pubsub.subscribe(config.REALTIME_CHANNEL)
+
+    async def receive():
+        while True:
+            await ws.receive_text()
+
+    async def send():
+        if snapshot:
+            await ws.send_json({"type": "costream_snapshot", "match_id": session_id, "data": snapshot})
+        while True:
+            msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+            if msg and msg.get("type") == "message":
+                data = json.loads(msg["data"])
+                body = data.get("data") or {}
+                if data.get("match_id") == session_id or body.get("session_id") == session_id \
+                        or body.get("chat_room_id") == f"chat-{session_id}":
+                    await ws.send_json(data)
+            else:
+                await asyncio.sleep(0.01)
+
+    tasks = [asyncio.create_task(receive()), asyncio.create_task(send())]
+    try:
+        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for t in tasks:
+            t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        await pubsub.unsubscribe(config.REALTIME_CHANNEL)
+        await r.aclose()

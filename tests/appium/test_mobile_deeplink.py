@@ -159,7 +159,8 @@ def _sign_in(driver, email, password):
 def test_cross_surface_chat_sync(driver):
     """App posts in cs-session-101's room; the Guest Web Player on /web/costream/cs-session-101 shows it within 3 s."""
     if not _chat_route_available():
-        pytest.skip("POST /api/v1/chat is not deployed on the backend yet")
+        pytest.skip(f"backend not reachable at API_BASE={API_BASE} (set API_BASE to the stack laptop, e.g. "
+                    "http://<lan-ip>:8080) or POST /api/v1/chat is missing")
     from appium.webdriver.common.appiumby import AppiumBy
     from selenium import webdriver as selenium_webdriver
     from selenium.webdriver.common.by import By

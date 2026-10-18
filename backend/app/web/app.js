@@ -171,7 +171,7 @@
 
   // Live updates: WebSocket first, then SSE, then a polite poll (well under 100 req / 10 s).
   function connectLive() {
-    if (isCostream) return;
+    if (isCostream) return connectCostream();
     let fellBack = false;
     const fallbackToSse = () => {
       if (fellBack) return; fellBack = true;
@@ -192,6 +192,22 @@
       ws.onclose = () => { if (!opened) fallbackToSse(); else setTimeout(connectLive, 1500); };
     } catch { fallbackToSse(); }
   }
+  // Co-stream pages: one read-only socket carries the room's chat (chat-{id}) and session updates (FR-3.3).
+  // If sockets are unavailable, poll the chat history once a second; appendChat drops duplicates.
+  let chatPolling = false;
+  function connectCostream() {
+    try {
+      const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/costream/${encodeURIComponent(entityId)}`);
+      let opened = false;
+      ws.onopen = () => { opened = true; };
+      ws.onmessage = (e) => onLiveMessage(e.data);
+      ws.onclose = () => { if (opened) setTimeout(connectCostream, 1500); else startChatPolling(); };
+    } catch { startChatPolling(); }
+  }
+  function startChatPolling() {
+    if (chatPolling) return; chatPolling = true;
+    setInterval(loadChat, 1000);
+  }
   let polling = false;
   function startPolling() {
     if (polling) return; polling = true;
@@ -201,6 +217,7 @@
     let msg; try { msg = JSON.parse(raw); } catch { return; }
     if (msg.type === "chat_message" || msg.type === "chat") { appendChat(msg.data || msg); return; }
     if (msg.type === "product_pinned" && msg.data && msg.data.product) { renderPinned(msg.data.product); return; }
+    if (isCostream) return; // costream_snapshot / costream_update carry no match score
     // Score update: use the payload if it carries the score, otherwise refetch (Day 1 messages carry only the event).
     if (!applyScorePayload(msg)) refreshScore();
   }

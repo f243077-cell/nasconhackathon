@@ -281,6 +281,32 @@ def host_disconnect():
     check("chat: 4th message inside 2 s -> 429 RATE_LIMITED", codes[:3] == [201] * 3 and 429 in codes[3:], codes)
 
 
+def viewer_chat_sync():
+    """Spec 6.3 cross-surface, minus the phone: a guest viewer on /ws/costream/{id} (opened before the session
+    exists) receives a member's chat post in chat-{id} within 3 s."""
+    import asyncio
+    import time
+
+    import websockets
+    token = call("POST", "/api/v1/auth/login", {"email": "player@nascon.test", "password": "Nascon@26"})[1].get("token")
+    ws_base = BASE.replace("http://", "ws://").replace("https://", "wss://")
+    text = f"cross-surface {time.time():.0f}"
+
+    async def run():
+        async with websockets.connect(f"{ws_base}/ws/costream/cs-xs-1") as ws:
+            await asyncio.sleep(0.3)
+            t0 = time.monotonic()
+            await asyncio.to_thread(call, "POST", "/api/v1/chat", {"chat_room_id": "chat-cs-xs-1", "text": text}, token)
+            while time.monotonic() - t0 < 3:
+                msg = json.loads(await asyncio.wait_for(ws.recv(), 3))
+                if msg.get("type") == "chat_message" and msg.get("data", {}).get("text") == text:
+                    return time.monotonic() - t0
+        return None
+
+    took = asyncio.run(run())
+    check(f"viewer chat: guest socket gets member chat within 3 s ({took})", took is not None and took <= 3, took)
+
+
 def main():
     if not SALT:
         print("Set DAY2_SALT to the stack's salt to check signatures.")
@@ -292,6 +318,7 @@ def main():
     athletes()
     host_controls()
     host_disconnect()
+    viewer_chat_sync()
     print(f"\n{len(FAILS)} failed" if FAILS else "\nALL PASS")
     sys.exit(1 if FAILS else 0)
 
