@@ -46,12 +46,33 @@ CREATE TABLE IF NOT EXISTS roster_index (player_id TEXT PRIMARY KEY, league_id T
 CREATE TABLE IF NOT EXISTS roster_requests (request_id TEXT PRIMARY KEY, request TEXT NOT NULL, response TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS sync_actions (device_id TEXT NOT NULL, action_id TEXT NOT NULL, result TEXT NOT NULL,
   PRIMARY KEY (device_id, action_id));
+CREATE TABLE IF NOT EXISTS stream_keys (stream_key TEXT PRIMARY KEY, player_id TEXT NOT NULL, label TEXT NOT NULL,
+  status TEXT NOT NULL, created_at TEXT NOT NULL, seq BIGSERIAL);
+CREATE TABLE IF NOT EXISTS costream_sessions (session_id TEXT PRIMARY KEY, request TEXT NOT NULL, response TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS qr_codes (entity_id TEXT PRIMARY KEY, short_code TEXT UNIQUE NOT NULL,
+  scan_count BIGINT NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS qr_scans (entity_id TEXT NOT NULL, device_family TEXT NOT NULL, hour_bucket TEXT NOT NULL,
+  scans BIGINT NOT NULL, PRIMARY KEY (entity_id, device_family, hour_bucket));
+CREATE TABLE IF NOT EXISTS guest_tokens (guest_token TEXT PRIMARY KEY, status TEXT NOT NULL, user_id TEXT,
+  merge_request TEXT, merge_response TEXT, created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS carts (user_id TEXT NOT NULL, variant_id TEXT NOT NULL, quantity INT NOT NULL,
+  PRIMARY KEY (user_id, variant_id));
+CREATE TABLE IF NOT EXISTS guest_carts (guest_token TEXT NOT NULL, variant_id TEXT NOT NULL, quantity INT NOT NULL,
+  PRIMARY KEY (guest_token, variant_id));
+CREATE TABLE IF NOT EXISTS moderation_actions (chat_room_id TEXT NOT NULL, user_id TEXT NOT NULL, kind TEXT NOT NULL,
+  seq BIGSERIAL, PRIMARY KEY (chat_room_id, user_id, kind));
+CREATE TABLE IF NOT EXISTS chat_messages (chat_room_id TEXT NOT NULL, seq BIGINT NOT NULL, message_id TEXT NOT NULL,
+  sender TEXT NOT NULL, text TEXT NOT NULL, flagged BOOLEAN NOT NULL, reason TEXT, created_at TEXT NOT NULL,
+  PRIMARY KEY (chat_room_id, seq));
+CREATE TABLE IF NOT EXISTS dlq (id BIGSERIAL PRIMARY KEY, event TEXT NOT NULL, attempts INT NOT NULL, created_at TEXT NOT NULL);
 """
 
 ALL_TABLES = [
     "meta", "tenants", "sports", "leagues", "matches", "events", "clubs", "players", "users", "products",
     "variants", "price_schedule", "inventory", "discount_codes", "orders", "order_status_log", "roster_state",
     "roster_index", "roster_requests", "sync_actions",
+    "stream_keys", "costream_sessions", "qr_codes", "qr_scans", "guest_tokens", "carts", "guest_carts",
+    "moderation_actions", "chat_messages", "dlq",
 ]
 
 

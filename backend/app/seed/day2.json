@@ -1,0 +1,22 @@
+{
+  "match": {
+    "match_id": "match-m1",
+    "sport_id": "football",
+    "league_id": "league-alpha-1",
+    "home": "club-alpha-1",
+    "away": "club-alpha-2",
+    "scheduled_at": "2026-10-18T10:00:00Z",
+    "venue": "Falcon Park",
+    "events": [
+      ["match_start", {}],
+      ["score", {"team_id": "club-alpha-1", "event_type": "goal"}]
+    ]
+  },
+  "qr_codes": [
+    {"entity_id": "match-m1", "short_code": "m1-live"},
+    {"entity_id": "player-alpha-1", "short_code": "p-alpha-1"},
+    {"entity_id": "club-alpha-1", "short_code": "c-alpha-1"}
+  ],
+  "guest_tokens": ["guest_anon_tok_7721"],
+  "pinned": {"match-m1": "prod-jersey-001"}
+}

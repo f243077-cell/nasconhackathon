@@ -1,0 +1,35 @@
+# MediaMTX config (FR-3.2, spec II 6.1): RTMP 1935, HLS 8888, WebRTC WHIP/WHEP 8889, control API 9997 (internal).
+logLevel: info
+
+# Publishing is authorised by the core API: only an active, non-revoked stream key may publish on live/<key>.
+authMethod: http
+authHTTPAddress: http://api:8080/internal/media/auth
+authHTTPExclude:
+  - action: api
+  - action: metrics
+  - action: pprof
+
+api: yes
+apiAddress: :9997
+
+rtmp: yes
+rtmpAddress: :1935
+
+hls: yes
+hlsAddress: :8888
+hlsAllowOrigin: "*"
+hlsVariant: lowLatency
+
+webrtc: yes
+webrtcAddress: :8889
+webrtcAllowOrigin: "*"
+webrtcLocalUDPAddress: :8189
+
+rtsp: no
+srt: no
+
+paths:
+  all_others:
+    # Recording for VOD indexing (FR-3.2); files land on the shared recordings volume.
+    record: yes
+    recordPath: /recordings/%path/%Y-%m-%d_%H-%M-%S-%f

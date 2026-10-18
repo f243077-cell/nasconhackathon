@@ -105,7 +105,11 @@ def append_event(conn, body, allow_internal: bool = False) -> tuple[int, dict]:
         "sequence": sequence, "match_version": sequence, "signature": signature,
     }
     msg_type = "match_status" if etype in ("match_start", "match_end", scoring.STATUS_CHANGE) else "match_update"
-    bus.publish_realtime(msg_type, match_id, {"event_id": body["event_id"], "type": etype, "version": sequence})
+    proj = scoring.project(match, sport, events + [{"sequence": sequence, "event_id": body["event_id"], "type": etype,
+                                                    "payload": payload, "signature": signature}])
+    bus.publish_realtime(msg_type, match_id, {"event_id": body["event_id"], "type": etype, "version": sequence,
+                                              "status": proj["status"], "home_score": proj["home"]["score"],
+                                              "away_score": proj["away"]["score"]})
     return 201, resp
 
 

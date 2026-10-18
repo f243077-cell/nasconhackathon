@@ -10,7 +10,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import config
 from .errors import ApiError, error_response
-from .routes import api_v1, audit, rbac, ws
+from .routes import api_v1, audit, audit_day2, rbac, ws
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("api")
@@ -43,6 +43,29 @@ def _redis():
     return _aredis
 
 
+WRITE_METHODS = ("POST", "PUT", "PATCH", "DELETE")
+# Day 1 audit write routes that must refuse an anonymous guest bearer (spec II 5.7, FR-4.3).
+GUEST_GUARDED_AUDIT = ("/audit/v1/checkout", "/audit/v1/events", "/audit/v1/roster/transfer", "/audit/v1/offline-sync")
+
+
+def _guest_token(scope) -> str | None:
+    for name, value in scope.get("headers", []):
+        if name == b"authorization":
+            v = value.decode("latin-1").strip()
+            if v[:7].lower() == "bearer " and v[7:].strip().startswith("guest_"):
+                return v[7:].strip()
+    return None
+
+
+def _guest_write_blocked(scope) -> str | None:
+    """Anonymous guest tokens may read and stage a guest cart, never write (403 GUEST_WRITE_FORBIDDEN)."""
+    if scope.get("method") not in WRITE_METHODS:
+        return None
+    path = scope.get("path", "")
+    guarded = (path.startswith("/api/v1/") and not path.startswith("/api/v1/guest/")) or path in GUEST_GUARDED_AUDIT
+    return _guest_token(scope) if guarded else None
+
+
 class BodyLimitAndRateLimit:
     """Pure ASGI middleware: 413 before anything else, then /api/v1/* rate limiting."""
 
@@ -61,6 +84,11 @@ class BodyLimitAndRateLimit:
                 if size > config.MAX_BODY_BYTES:
                     resp = error_response(413, "PAYLOAD_TOO_LARGE", "Request body exceeds 1 MB")
                     return await resp(scope, receive, send)
+        guest = _guest_write_blocked(scope)
+        if guest:
+            resp = error_response(403, "GUEST_WRITE_FORBIDDEN", "Anonymous guest tokens cannot perform write mutations.",
+                                  {"guest_token": guest})
+            return await resp(scope, receive, send)
         path = scope.get("path", "")
         if path.startswith("/api/v1/"):
             client = scope.get("client")
@@ -111,6 +139,7 @@ async def unhandled_handler(request: Request, exc: Exception):
 
 
 app.include_router(audit.router)
+app.include_router(audit_day2.router)
 app.include_router(rbac.router)
 app.include_router(api_v1.router)
 app.include_router(ws.router)

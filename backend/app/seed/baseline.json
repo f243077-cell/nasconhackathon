@@ -201,6 +201,14 @@
    "name": "Faisal Noor",
    "position": "gk",
    "role": "captain"
+  },
+  {
+   "player_id": "player-beta-2",
+   "club_id": "club-beta-1",
+   "tenant_id": "tenant-beta",
+   "name": "Saad Rehman",
+   "position": "df",
+   "role": "starter"
   }
  ],
  "leagues": [

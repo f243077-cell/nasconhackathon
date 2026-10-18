@@ -57,6 +57,28 @@ def parse_reset_body(body) -> tuple[int, dict]:
     return seed, stock
 
 
+DAY2 = json.loads((SEED_DIR / "day2.json").read_text(encoding="utf-8"))
+
+
+def seed_day2(conn) -> None:
+    """Part II baseline (spec 5.2): live match-m1 at 1-0, default QR mappings, guest token, empty member cart."""
+    m = DAY2["match"]
+    events_repo.append_event(conn, {"event_id": f"{m['match_id']}-init", "match_id": m["match_id"], "type": "match_init",
+                                    "payload": {"sport_id": m["sport_id"], "home_team_id": m["home"],
+                                                "away_team_id": m["away"], "league_id": m["league_id"]}})
+    conn.execute("UPDATE matches SET scheduled_at = %s, venue = %s, pinned_product_id = %s WHERE match_id = %s",
+                 (m["scheduled_at"], m["venue"], DAY2["pinned"].get(m["match_id"]), m["match_id"]))
+    for i, (etype, payload) in enumerate(m["events"], start=1):
+        events_repo.append_event(conn, {"event_id": f"{m['match_id']}-e{i}", "match_id": m["match_id"],
+                                        "type": etype, "payload": payload})
+    for q in DAY2["qr_codes"]:
+        conn.execute("INSERT INTO qr_codes (entity_id, short_code, scan_count) VALUES (%s, %s, 0)",
+                     (q["entity_id"], q["short_code"]))
+    for g in DAY2["guest_tokens"]:
+        conn.execute("INSERT INTO guest_tokens (guest_token, status, created_at) VALUES (%s, 'active', %s)",
+                     (g, "2026-10-18T00:00:00Z"))
+
+
 def reset(conn, body=None) -> dict:
     seed, stock_override = parse_reset_body(body)
     conn.execute("TRUNCATE " + ", ".join(ALL_TABLES) + " RESTART IDENTITY")
@@ -121,6 +143,7 @@ def reset(conn, body=None) -> dict:
                                                 "type": etype, "payload": payload})
 
     roster_repo.seed_demo_roster(conn, b["roster_league"], b["players"])
+    seed_day2(conn)
 
     conn.execute("INSERT INTO meta (key, value) VALUES ('seeded', '1')")
     shown = {k: stock[k] for k in JERSEY_DEFAULTS}

@@ -9,6 +9,7 @@ from ..repo import roster as roster_repo
 from ..repo import seed as seed_repo
 from ..repo import store as store_repo
 from ..repo import sync as sync_repo
+from ..services import bus, media
 from .common import json_body, respond, run_tx
 
 router = APIRouter()
@@ -28,9 +29,11 @@ def health():
     try:
         with tx() as conn:
             row = conn.execute("SELECT value FROM meta WHERE key = 'seeded'").fetchone()
+        bus.client().ping()
     except Exception:  # noqa: BLE001
         row = None
-    if not row:
+    # Part II: the media server must be up too (spec II 5.1).
+    if not row or not media.reachable():
         return respond(503, {"error": {"code": "NOT_READY", "message": "Not ready", "details": {}}})
     return {"status": "ok"}
 
