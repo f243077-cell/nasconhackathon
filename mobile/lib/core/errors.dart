@@ -48,6 +48,7 @@ const Map<String, String> _plainMessages = {
   'EVENT_NOT_FOUND': "That event couldn't be found.",
   'ORDER_NOT_FOUND': "That order couldn't be found.",
   'VALIDATION_ERROR': 'Some details are missing or invalid. Check and try again.',
+  'QR_NOT_FOUND': "That code isn't linked to a match, club or stream.",
   'OFFLINE': offlineMessage,
 };
 

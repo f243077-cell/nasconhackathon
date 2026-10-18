@@ -83,6 +83,12 @@ class MatchLiveScreen extends ConsumerWidget {
               ),
             ]),
           ),
+          const SizedBox(height: 12),
+          SecondaryButton(
+            label: 'Watch the Co-Stream',
+            icon: Icons.grid_view_rounded,
+            onPressed: () => context.push('/costream/cs-session-101'),
+          ),
           if (!signedIn) ...[
             const SizedBox(height: 16),
             Panel(

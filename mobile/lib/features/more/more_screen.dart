@@ -85,6 +85,7 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
           const SizedBox(height: 16),
           _Menu(children: [
             _MenuRow(title: 'Scan QR code', subtitle: 'Open a match, club or stream from its code', onTap: () => context.push('/scan')),
+            _MenuRow(title: 'Co-stream', subtitle: 'Watch or join a live co-stream', onTap: () => _openCoStream(context)),
             if (session.user.playerId != null)
               _MenuRow(title: 'Go live', subtitle: 'Stream key for OBS, and co-streams', onTap: () => context.push('/broadcast')),
             _MenuRow(
@@ -189,4 +190,28 @@ class _MenuRow extends StatelessWidget {
       ),
     );
   }
+}
+
+
+/// Ask for a co-stream session (defaults to the demo session) and open it.
+Future<void> _openCoStream(BuildContext context) async {
+  final controller = TextEditingController(text: 'cs-session-101');
+  final id = await showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Open Co-Stream'),
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        decoration: const InputDecoration(labelText: 'Session ID'),
+        onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+        TextButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()), child: const Text('Open')),
+      ],
+    ),
+  );
+  controller.dispose();
+  if (id != null && id.isNotEmpty && context.mounted) context.push('/costream/$id');
 }

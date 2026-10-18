@@ -45,13 +45,16 @@ Future<String?> resolveScannedCode(String raw) async {
   if (uri == null) return null;
   final direct = appRouteForUri(uri);
   if (direct != null) return direct;
-  final segs = uri.pathSegments;
+  final segs = uri.pathSegments.where((x) => x.isNotEmpty).toList();
   if (segs.length == 2 && segs.first == 'q') {
+    // Printed codes carry the canonical short URL (http://localhost:8080/q/...); always resolve the short code
+    // against the server this phone is configured for, with a timeout so a bad network can't hang the scanner.
     final base = await ServerConfig.load();
-    final url = uri.hasAuthority ? uri.toString() : '$base${uri.path}';
+    final url = '$base/q/${segs[1]}';
     try {
-      final res = await Dio().get(url,
-          options: Options(followRedirects: false, validateStatus: (s) => s != null && s < 500, responseType: ResponseType.plain));
+      final res = await Dio(BaseOptions(connectTimeout: const Duration(seconds: 6), receiveTimeout: const Duration(seconds: 6)))
+          .get(url, options: Options(followRedirects: false, validateStatus: (s) => s != null && s < 500, responseType: ResponseType.plain));
+      if (res.statusCode == 404) throw ApiException('QR_NOT_FOUND');
       final location = res.headers.value('location');
       if (location != null) return appRouteForUri(Uri.parse(location));
     } on DioException {

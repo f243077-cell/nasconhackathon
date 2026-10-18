@@ -74,6 +74,7 @@ flutter:
     - assets/brand/
     - assets/crests/
     - assets/players/
+    - assets/products/
 
   # Floodlight design type: Barlow (UI text) and Barlow Condensed (headlines, scores, labels). SIL OFL, see assets/fonts/OFL.txt.
   fonts:

@@ -60,8 +60,9 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(path: '/settings', builder: (_, _) => const SettingsScreen()),
-      StatefulShellRoute.indexedStack(
-        builder: (_, _, shell) => AppShell(navigationShell: shell),
+      StatefulShellRoute(
+        builder: (_, _, shell) => shell,
+        navigatorContainerBuilder: (_, shell, children) => AppShell(navigationShell: shell, children: children),
         branches: [
           StatefulShellBranch(routes: [GoRoute(path: '/fixtures', builder: (_, _) => const FixturesScreen())]),
           StatefulShellBranch(routes: [GoRoute(path: '/standings', builder: (_, _) => const StandingsScreen())]),
@@ -70,20 +71,25 @@ final routerProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(routes: [GoRoute(path: '/more', builder: (_, _) => const MoreScreen())]),
         ],
       ),
-      // Detail screens are pushed on top of the shell, so Back always returns to where you were.
-      GoRoute(path: '/match/:id', builder: (_, s) => MatchScreen(matchId: s.pathParameters['id']!)),
-      GoRoute(path: '/club/:id', builder: (_, s) => ClubScreen(clubId: s.pathParameters['id']!)),
-      GoRoute(path: '/product/:id', builder: (_, s) => ProductScreen(productId: s.pathParameters['id']!)),
-      GoRoute(path: '/cart', builder: (_, _) => const CartScreen()),
-      GoRoute(path: '/receipt', builder: (_, s) => ReceiptScreen(order: s.extra! as Order)),
-      // Roster actions now live on the Clubs tab (the "+ Roster action" button); old links land there.
-      GoRoute(path: '/roster', redirect: (_, _) => '/club'),
-      GoRoute(path: '/scoring', builder: (_, s) => ScoringScreen(initialMatchId: s.uri.queryParameters['match'])),
-      GoRoute(path: '/sync', builder: (_, _) => const SyncScreen()),
-      GoRoute(path: '/live/:id', builder: (_, s) => MatchLiveScreen(matchId: s.pathParameters['id']!)),
-      GoRoute(path: '/costream/:id', builder: (_, s) => CoStreamScreen(sessionId: s.pathParameters['id']!)),
-      GoRoute(path: '/scan', builder: (_, _) => const QrScannerScreen()),
-      GoRoute(path: '/broadcast', builder: (_, _) => const BroadcastScreen()),
+      // Detail screens are pushed on top of the tabs (Back returns to where you were) and keep the nav bar.
+      ShellRoute(
+        builder: (_, state, child) => DetailShell(location: state.matchedLocation, child: child),
+        routes: [
+        GoRoute(path: '/match/:id', builder: (_, s) => MatchScreen(matchId: s.pathParameters['id']!)),
+        GoRoute(path: '/club/:id', builder: (_, s) => ClubScreen(clubId: s.pathParameters['id']!)),
+        GoRoute(path: '/product/:id', builder: (_, s) => ProductScreen(productId: s.pathParameters['id']!)),
+        GoRoute(path: '/cart', builder: (_, _) => const CartScreen()),
+        GoRoute(path: '/receipt', builder: (_, s) => ReceiptScreen(order: s.extra! as Order)),
+        // Roster actions now live on the Clubs tab (the "+ Roster action" button); old links land there.
+        GoRoute(path: '/roster', redirect: (_, _) => '/club'),
+        GoRoute(path: '/scoring', builder: (_, s) => ScoringScreen(initialMatchId: s.uri.queryParameters['match'])),
+        GoRoute(path: '/sync', builder: (_, _) => const SyncScreen()),
+        GoRoute(path: '/live/:id', builder: (_, s) => MatchLiveScreen(matchId: s.pathParameters['id']!)),
+        GoRoute(path: '/costream/:id', builder: (_, s) => CoStreamScreen(sessionId: s.pathParameters['id']!)),
+        GoRoute(path: '/scan', builder: (_, _) => const QrScannerScreen()),
+        GoRoute(path: '/broadcast', builder: (_, _) => const BroadcastScreen()),
+        ],
+      ),
     ],
   );
 });
@@ -94,9 +100,8 @@ class NasconApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
-    final tenant = ref.watch(sessionProvider)?.tenant;
-    // White-label: the tenant's colour becomes the accent (floodlight lime before sign-in).
-    final accent = parseHexColor(tenant?.primaryColor);
+    // Floodlight lime is the app accent; the tenant's own colour stays on its crest (TenantMark).
+    const accent = floodlightLime;
     return MaterialApp.router(
       title: 'PlayGrid',
       debugShowCheckedModeBanner: false,

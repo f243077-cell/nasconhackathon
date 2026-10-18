@@ -747,8 +747,14 @@ class ProductArtwork extends StatelessWidget {
       ),
       child: Center(child: Icon(icon, size: iconSize, color: p.muted, semanticLabel: 'Product image')),
     );
-    if (imageUrl == null) return placeholder;
-    return Image.network(imageUrl!, fit: BoxFit.cover, errorBuilder: (_, _, _) => placeholder);
+    final url = imageUrl;
+    if (url == null) return placeholder;
+    // Seeded products point at /static/<name>.png; those pictures ship with the app (assets/products/).
+    if (url.startsWith('/')) {
+      final name = url.split('/').last;
+      return Image.asset('assets/products/$name', fit: BoxFit.cover, errorBuilder: (_, _, _) => placeholder);
+    }
+    return Image.network(url, fit: BoxFit.cover, errorBuilder: (_, _, _) => placeholder);
   }
 }
 
