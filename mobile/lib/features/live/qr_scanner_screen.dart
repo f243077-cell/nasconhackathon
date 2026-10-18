@@ -41,7 +41,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
       final route = await resolveScannedCode(raw);
       if (!mounted) return;
       if (route == null) {
-        setState(() => _message = "That code isn't a NaSCon match, club or stream.");
+        setState(() => _message = "That code isn't a PlayGrid match, club or stream.");
       } else {
         context.push(route);
         setState(() => _message = null);

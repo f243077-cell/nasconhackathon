@@ -98,7 +98,7 @@ class NasconApp extends ConsumerWidget {
     // White-label: the tenant's colour becomes the accent (floodlight lime before sign-in).
     final accent = parseHexColor(tenant?.primaryColor);
     return MaterialApp.router(
-      title: 'NaSCon Sports',
+      title: 'PlayGrid',
       debugShowCheckedModeBanner: false,
       theme: buildTheme(accent),
       themeMode: ThemeMode.dark,

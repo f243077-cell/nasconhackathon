@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/format.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
+import 'app_logo.dart';
 import 'team_crest.dart';
 
 /// The tenant's mark (white-label). Logo when available, else a crest in the tenant colour.
@@ -14,24 +15,25 @@ class TenantMark extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tenant = ref.watch(sessionProvider)?.tenant;
+    if (tenant == null) return AppLogo(size: size); // signed out: the product's own mark
     final p = context.palette;
     final crest = CrestShape(
-      initials: initialsOf(tenant?.name ?? 'NaSCon Sports'),
+      initials: initialsOf(tenant.name),
       primary: p.accent,
       secondary: p.accentDeep,
       textColor: p.onAccent,
       size: size,
     );
     return Semantics(
-      label: '${tenant?.name ?? 'App'} logo',
+      label: '${tenant.name} logo',
       image: true,
       excludeSemantics: true,
-      child: tenant?.logoUrl == null
+      child: tenant.logoUrl == null
           ? crest
           : ClipRRect(
               borderRadius: crestRadius(size, size * 1.12),
               child: Image.network(
-                tenant!.logoUrl!,
+                tenant.logoUrl!,
                 width: size,
                 height: size * 1.12,
                 fit: BoxFit.cover,

@@ -6,8 +6,8 @@ import '../../core/config.dart';
 import '../../core/errors.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
+import '../../widgets/app_logo.dart';
 import '../../widgets/sync_status_bar.dart';
-import '../../widgets/tenant_title.dart';
 import '../../widgets/ui.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -96,11 +96,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 children: [
                   const ScreenHeader(leading: StatusPill(linkToQueue: false)),
                   const SizedBox(height: 70),
-                  const Align(alignment: Alignment.centerLeft, child: TenantMark(size: 64)),
+                  const Align(alignment: Alignment.centerLeft, child: AppLogo(size: 64)),
                   const SizedBox(height: 12),
                   Semantics(
                     header: true,
-                    child: Text('NASCON\nSPORTS', style: condensed(46, weight: FontWeight.w800, color: p.label, height: 0.95)),
+                    child: Text('PLAYGRID', style: condensed(46, weight: FontWeight.w800, color: p.label, height: 0.95)),
                   ),
                   const SizedBox(height: 12),
                   Text('Sign in to follow your league.', style: TextStyle(fontSize: 16, color: p.label2)),

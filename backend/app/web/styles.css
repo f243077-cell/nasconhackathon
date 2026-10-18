@@ -58,7 +58,7 @@ button, input { font: inherit; color: inherit; }
   border-bottom: 1px solid var(--raised);
 }
 .brand { display: inline-flex; align-items: center; gap: 10px; min-height: 48px; color: var(--label); text-decoration: none; }
-.brand-mark { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--accent); color: var(--on-accent); font: 800 20px/1 var(--display); }
+.brand-mark { display: block; width: 34px; height: 34px; border-radius: 9px; }
 .brand-name { font: 700 20px/1 var(--display); letter-spacing: .02em; text-transform: uppercase; }
 .topbar-actions { display: flex; align-items: center; gap: 8px; }
 .guest-pill { color: var(--label2); font-size: 14px; }

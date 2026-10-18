@@ -109,7 +109,7 @@
     if (home && away) {
       const h = home.name || titleCase(home.team_id), a = away.name || titleCase(away.team_id);
       $("match-title").textContent = `${h} versus ${a}`;
-      document.title = `${h} vs ${a} | NaSCon Sports`;
+      document.title = `${h} vs ${a} | PlayGrid`;
     }
   }
 
@@ -407,7 +407,7 @@
     const r = await http("GET", isPlayer ? `/api/v1/athletes/${encodeURIComponent(entityId)}` : `/api/v1/clubs/${encodeURIComponent(entityId)}`, { token: readToken() });
     const d = (r.ok && r.data) || {};
     const name = d.name || d.display_name || titleCase(entityId);
-    document.title = `${name} | NaSCon Sports`;
+    document.title = `${name} | PlayGrid`;
     const [c1, c2] = crestColors(entityId);
     const rows = (title, list, left, right) => list && list.length
       ? `<section class="card"><h2>${title}</h2><ul>${list.map((x) => `<li><span>${esc(left(x))}</span><span>${esc(right(x))}</span></li>`).join("")}</ul></section>` : "";
