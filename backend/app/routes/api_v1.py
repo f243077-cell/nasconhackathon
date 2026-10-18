@@ -31,6 +31,13 @@ def principal(authorization: str | None = Header(default=None)) -> dict:
     return jwt_tokens.principal_from_header(authorization)
 
 
+def principal_or_guest(authorization: str | None = Header(default=None)) -> dict:
+    """Read routes the Guest Web Player uses: an anonymous guest bearer (or no bearer) reads public data."""
+    if not authorization or authorization[7:].strip().startswith("guest_"):
+        return {"role": "guest", "sub": (authorization or "")[7:].strip() or None, "tenant_id": None}
+    return jwt_tokens.principal_from_header(authorization)
+
+
 def require(p: dict, action: str, resource: dict | None = None) -> None:
     if not policy.is_allowed(p, action, resource):
         raise ApiError(403, "FORBIDDEN", "You don't have permission to do that", {"action": action})
@@ -174,12 +181,12 @@ def _product_view(conn, product_id):
 
 
 @router.get("/matches/{match_id}")
-def match_detail(match_id: str, p: dict = Depends(principal)):
+def match_detail(match_id: str, p: dict = Depends(principal_or_guest)):
     with tx() as conn:
         match = events_repo.get_match(conn, match_id)
         if match is None:
             raise ApiError(404, "MATCH_NOT_FOUND", "Match not found", {"match_id": match_id})
-        if match["league_id"]:
+        if match["league_id"] and p["role"] != "guest":
             _scoped_league(conn, p, match["league_id"])
         proj = events_repo.score(conn, match_id)
         names = _team_names(conn, {match["home"], match["away"]})
@@ -409,3 +416,31 @@ def post_chat(body=Depends(json_body), p: dict = Depends(principal)):
     """Member chat post (FR-3.3, FR-5.3); anonymous guest tokens are refused earlier with GUEST_WRITE_FORBIDDEN."""
     from ..repo import day2 as day2_repo
     return respond(201, run_tx(day2_repo.post_chat, p, body))
+
+
+
+@router.post("/guest/token")
+def guest_token():
+    """Issue an anonymous read-only viewer token for the Guest Web Player (FR-4.2)."""
+    from ..repo import day2 as day2_repo
+    return respond(201, run_tx(day2_repo.issue_guest_token))
+
+
+@router.get("/chat")
+def chat_history(room_id: str, p: dict = Depends(principal_or_guest)):
+    from ..repo import day2 as day2_repo
+    with tx() as conn:
+        return day2_repo.chat_history(conn, room_id)
+
+
+@router.post("/cart")
+def merge_guest_cart(body=Depends(json_body), p: dict = Depends(principal)):
+    """FR-4.4: after login, merge the staged guest cart into the member's persistent cart (same rules as the audit
+    route: summed per variant, capped by stock, the guest token can't be merged twice)."""
+    from ..repo import social as social_repo
+    if not isinstance(body, dict):
+        raise validation_error(["body"], "Body must be a JSON object")
+    req = {"guest_token": body.get("guest_token"), "registered_user_id": p.get("player_id") or p["sub"],
+           "guest_cart": body.get("items"), "test_write_block": False}
+    status, resp = run_tx(social_repo.cart_merge, req)
+    return respond(status, resp)

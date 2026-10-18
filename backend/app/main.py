@@ -12,7 +12,9 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from . import config
 from .errors import ApiError, error_response
 from .services.bus import qr_cache_key
-from .routes import api_v1, audit, audit_day2, audit_day2_social, rbac, ws
+from fastapi.staticfiles import StaticFiles
+
+from .routes import api_v1, audit, audit_day2, audit_day2_social, rbac, web, ws
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("api")
@@ -163,3 +165,6 @@ app.include_router(audit_day2_social.router)
 app.include_router(rbac.router)
 app.include_router(api_v1.router)
 app.include_router(ws.router)
+if web.WEB_DIR.exists():
+    app.mount("/web/static", StaticFiles(directory=web.WEB_DIR), name="web-static")
+app.include_router(web.router)

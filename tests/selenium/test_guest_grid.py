@@ -61,18 +61,23 @@ _POST_AND_WATCH = """
 const [body, timeoutMs, done] = arguments;
 const banner = document.querySelector('[data-testid="live-score-banner"]');
 const before = banner.textContent.trim();
-let status = null, finished = false;
+let status = null, finished = false, changedAt = null;
 const t0 = performance.now();
+// The WebSocket update can beat the HTTP response, so finish only once BOTH the status and the change are known.
 const finish = (changed) => {
   if (finished) return; finished = true; obs.disconnect();
-  done({status, before, after: banner.textContent.trim(), changed, elapsed: performance.now() - t0});
+  done({status, before, after: banner.textContent.trim(), changed,
+        elapsed: changed ? changedAt : performance.now() - t0});
 };
-const obs = new MutationObserver(() => { if (banner.textContent.trim() !== before) finish(true); });
+const tryFinish = () => { if (changedAt !== null && status !== null) finish(true); };
+const obs = new MutationObserver(() => {
+  if (changedAt === null && banner.textContent.trim() !== before) { changedAt = performance.now() - t0; tryFinish(); }
+});
 obs.observe(banner, {childList: true, subtree: true, characterData: true});
 fetch('/audit/v1/events', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})
-  .then(r => { status = r.status; if (banner.textContent.trim() !== before) finish(true); })
-  .catch(() => { status = -1; });
-setTimeout(() => finish(false), timeoutMs);
+  .then(r => { status = r.status; if (changedAt === null && banner.textContent.trim() !== before) changedAt = performance.now() - t0; tryFinish(); })
+  .catch(() => { status = -1; tryFinish(); });
+setTimeout(() => finish(changedAt !== null), timeoutMs);
 """
 
 

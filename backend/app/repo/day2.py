@@ -168,11 +168,14 @@ def store_chat(conn, room: str, messages: list[dict]) -> None:
         conn.execute("INSERT INTO chat_messages (chat_room_id, seq, message_id, sender, text, flagged, reason, created_at) "
                      "VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
                      (room, seq, m["message_id"], m["sender"], m["text"], m["flagged"], m["reason"], now_iso()))
-        bus.publish_realtime("chat_message", None, dict(m, chat_room_id=room, seq=seq))
+        entity = room[len("chat-"):] if room.startswith("chat-") else None
+        bus.publish_realtime("chat_message", entity, dict(m, chat_room_id=room, seq=seq))
 
 
 def post_chat(conn, principal: dict, body) -> dict:
     """Member chat post (/api/v1/chat): the same moderation rules, then broadcast."""
+    if isinstance(body, dict) and "chat_room_id" not in body and isinstance(body.get("room_id"), str):
+        body = dict(body, chat_room_id=body["room_id"])
     if not isinstance(body, dict) or not isinstance(body.get("chat_room_id"), str) or not isinstance(body.get("text"), str):
         from ..errors import validation_error
         raise validation_error(["chat_room_id", "text"], "chat_room_id and text are required")
@@ -185,6 +188,21 @@ def post_chat(conn, principal: dict, body) -> dict:
         return {"chat_room_id": body["chat_room_id"], "delivered": False,
                 "reason": result["blocked"][0]["reason"] if result["blocked"] else None}
     return {"chat_room_id": body["chat_room_id"], "delivered": True, "message": result["filtered_messages"][0]}
+
+
+def issue_guest_token(conn) -> dict:
+    """Short-lived anonymous viewer token (FR-4.2): read-only playback, live score, guest cart staging."""
+    import secrets
+    token = "guest_anon_tok_" + secrets.token_hex(8)
+    conn.execute("INSERT INTO guest_tokens (guest_token, status, created_at) VALUES (%s, 'active', %s)",
+                 (token, now_iso()))
+    return {"guest_token": token, "role": "guest", "read_only": True}
+
+
+def chat_history(conn, room: str, limit: int = 100) -> dict:
+    rows = conn.execute("SELECT seq, message_id, sender, text, flagged, reason, created_at FROM chat_messages "
+                        "WHERE chat_room_id = %s ORDER BY seq DESC LIMIT %s", (room, limit)).fetchall()
+    return {"chat_room_id": room, "messages": list(reversed(rows))}
 
 
 # ------------------------------------------------------------------ privacy (NFR-9)

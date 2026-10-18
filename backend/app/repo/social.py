@@ -3,6 +3,7 @@ Rules live in domain/costream.py, domain/guest_cart.py and domain/moderation.py;
 import json
 
 from .. import config
+from ..services import bus
 from ..canonical import canonical, sign_day2
 from ..domain import costream as costream_domain
 from ..domain import guest_cart as cart_domain
@@ -36,6 +37,7 @@ def costream_session(conn, body) -> tuple[int, dict]:
     if row and row["request"] == key:
         return 200, json.loads(row["response"])
     resp["signature"] = sign_day2(sid, costream_domain.sig_payload(resp))
+    bus.invalidate_qr(sid)
     conn.execute("INSERT INTO costream_sessions (session_id, request, response) VALUES (%s, %s, %s) "
                  "ON CONFLICT (session_id) DO UPDATE SET request = EXCLUDED.request, response = EXCLUDED.response",
                  (sid, key, json.dumps(resp)))
