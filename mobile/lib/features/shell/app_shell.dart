@@ -71,18 +71,19 @@ class _FadingBranches extends StatelessWidget {
     final duration = reduce ? Duration.zero : const Duration(milliseconds: 240);
     return Stack(fit: StackFit.expand, children: [
       for (var i = 0; i < children.length; i++)
+        // The fade itself must keep ticking, so TickerMode only pauses the hidden tab's own content.
         IgnorePointer(
           ignoring: i != index,
-          child: TickerMode(
-            enabled: i == index,
-            child: AnimatedOpacity(
-              opacity: i == index ? 1 : 0,
+          child: AnimatedOpacity(
+            opacity: i == index ? 1 : 0,
+            duration: duration,
+            curve: Curves.easeOutCubic,
+            child: AnimatedSlide(
+              offset: i == index ? Offset.zero : const Offset(0, 0.015),
               duration: duration,
               curve: Curves.easeOutCubic,
-              child: AnimatedSlide(
-                offset: i == index ? Offset.zero : const Offset(0, 0.015),
-                duration: duration,
-                curve: Curves.easeOutCubic,
+              child: TickerMode(
+                enabled: i == index,
                 child: ExcludeSemantics(excluding: i != index, child: children[i]),
               ),
             ),

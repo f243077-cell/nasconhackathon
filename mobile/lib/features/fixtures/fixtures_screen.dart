@@ -95,15 +95,21 @@ class _FixturesScreenState extends ConsumerState<FixturesScreen> {
         ),
         const SizedBox(height: 16),
       ],
-      if (ordered.isEmpty) const EmptyState(message: 'No matches on this day', icon: Icons.event_busy_rounded),
-      for (final f in open) ...[
-        f.status == 'in_progress' ? LiveFixtureCard(fixture: f) : FixtureCard(fixture: f),
-        const SizedBox(height: 12),
-      ],
-      if (results.isNotEmpty) ...[
-        SectionLabel('Results', padding: EdgeInsets.only(top: open.isEmpty ? 0 : 8, bottom: 10)),
-        for (final f in results) ...[FixtureCard(fixture: f), const SizedBox(height: 12)],
-      ],
+      // The day's matches cross-fade in when the day changes.
+      SmoothSwitch(
+        switchKey: _day,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          if (ordered.isEmpty) const EmptyState(message: 'No matches on this day', icon: Icons.event_busy_rounded),
+          for (final f in open) ...[
+            f.status == 'in_progress' ? LiveFixtureCard(fixture: f) : FixtureCard(fixture: f),
+            const SizedBox(height: 12),
+          ],
+          if (results.isNotEmpty) ...[
+            SectionLabel('Results', padding: EdgeInsets.only(top: open.isEmpty ? 0 : 8, bottom: 10)),
+            for (final f in results) ...[FixtureCard(fixture: f), const SizedBox(height: 12)],
+          ],
+        ]),
+      ),
     ]);
   }
 }
@@ -126,14 +132,24 @@ class _DayStrip extends StatelessWidget {
           excludeSemantics: true,
           child: GestureDetector(
             onTap: onTap,
-            child: Container(
+            child: AnimatedContainer(
+              duration: motion(context),
+              curve: Curves.easeOutCubic,
               width: 58,
               margin: const EdgeInsets.only(right: 6),
               padding: const EdgeInsets.symmetric(vertical: 8),
               decoration: BoxDecoration(color: on ? p.accent : p.surface, borderRadius: BorderRadius.circular(10)),
               child: Column(children: [
-                Text(top.toUpperCase(), style: condensed(12, weight: FontWeight.w600, color: on ? p.onAccent : p.label3)),
-                Text(big, style: condensed(20, weight: FontWeight.w700, color: on ? p.onAccent : p.label)),
+                AnimatedDefaultTextStyle(
+                  duration: motion(context),
+                  style: condensed(12, weight: FontWeight.w600, color: on ? p.onAccent : p.label3),
+                  child: Text(top.toUpperCase()),
+                ),
+                AnimatedDefaultTextStyle(
+                  duration: motion(context),
+                  style: condensed(20, weight: FontWeight.w700, color: on ? p.onAccent : p.label),
+                  child: Text(big),
+                ),
               ]),
             ),
           ),

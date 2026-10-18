@@ -139,12 +139,15 @@ class _ClubProfileState extends ConsumerState<ClubProfile> {
               UnderlineTabs(labels: const ['Squad', 'Staff', 'Venue', 'History'], index: _tab, onChanged: (i) => setState(() => _tab = i)),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
-                child: switch (_tab) {
-                  0 => _Squad(club: c, canManage: canManage),
-                  1 => StaffList(club: c),
-                  2 => VenueTab(club: c),
-                  _ => HistoryTab(club: c),
-                },
+                child: SmoothSwitch(
+                  switchKey: _tab,
+                  child: switch (_tab) {
+                    0 => _Squad(club: c, canManage: canManage),
+                    1 => StaffList(club: c),
+                    2 => VenueTab(club: c),
+                    _ => HistoryTab(club: c),
+                  },
+                ),
               ),
             ],
           ),

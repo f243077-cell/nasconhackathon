@@ -76,11 +76,14 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
               ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
-              child: switch (_tab) {
-                0 => MatchTimeline(match: m),
-                1 => _Lineups(match: m),
-                _ => _Stats(match: m),
-              },
+              child: SmoothSwitch(
+                switchKey: _tab,
+                child: switch (_tab) {
+                  0 => MatchTimeline(match: m),
+                  1 => _Lineups(match: m),
+                  _ => _Stats(match: m),
+                },
+              ),
             ),
           ]),
         ),

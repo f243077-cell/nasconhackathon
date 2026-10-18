@@ -567,19 +567,22 @@ class PillChips<T> extends StatelessWidget {
             excludeSemantics: true,
             child: GestureDetector(
               onTap: () => onChanged(e.key),
-              child: Container(
+              child: AnimatedContainer(
+                duration: motion(context),
+                curve: Curves.easeOutCubic,
                 height: 40,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 margin: const EdgeInsets.only(right: 8, top: 4, bottom: 4),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: e.key == value ? p.accent : null,
-                  border: e.key == value ? null : Border.all(color: p.border),
+                  color: e.key == value ? p.accent : p.accent.withValues(alpha: 0),
+                  border: Border.all(color: e.key == value ? p.accent : p.border),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: Text(
-                  e.value.toUpperCase(),
+                child: AnimatedDefaultTextStyle(
+                  duration: motion(context),
                   style: condensed(14, weight: FontWeight.w700, tracking: 1, color: e.key == value ? p.onAccent : p.label),
+                  child: Text(e.value.toUpperCase()),
                 ),
               ),
             ),
@@ -614,15 +617,18 @@ class UnderlineTabs extends StatelessWidget {
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () => onChanged(i),
-              child: Container(
+              child: AnimatedContainer(
+                duration: motion(context),
+                curve: Curves.easeOutCubic,
                 margin: const EdgeInsets.only(right: 22),
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 decoration: BoxDecoration(
-                  border: Border(bottom: BorderSide(color: i == index ? p.accent : Colors.transparent, width: 3)),
+                  border: Border(bottom: BorderSide(color: i == index ? p.accent : p.accent.withValues(alpha: 0), width: 3)),
                 ),
-                child: Text(
-                  labels[i].toUpperCase(),
+                child: AnimatedDefaultTextStyle(
+                  duration: motion(context),
                   style: condensed(15, weight: FontWeight.w700, tracking: 1, color: i == index ? p.accent : p.label3),
+                  child: Text(labels[i].toUpperCase()),
                 ),
               ),
             ),
@@ -656,7 +662,8 @@ class SegmentedPills<T> extends StatelessWidget {
               child: GestureDetector(
                 onTap: () => onChanged(e.key),
                 child: AnimatedContainer(
-                  duration: MediaQuery.of(context).disableAnimations ? Duration.zero : const Duration(milliseconds: 180),
+                  duration: motion(context),
+                  curve: Curves.easeOutCubic,
                   height: 40,
                   margin: const EdgeInsets.symmetric(horizontal: 2),
                   alignment: Alignment.center,
@@ -664,11 +671,10 @@ class SegmentedPills<T> extends StatelessWidget {
                     color: e.key == value ? p.accent : Colors.transparent,
                     borderRadius: BorderRadius.circular(9),
                   ),
-                  child: Text(
-                    e.value.toUpperCase(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  child: AnimatedDefaultTextStyle(
+                    duration: motion(context),
                     style: condensed(14, weight: FontWeight.w700, tracking: 1, color: e.key == value ? p.onAccent : p.label2),
+                    child: Text(e.value.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis),
                   ),
                 ),
               ),
@@ -882,4 +888,32 @@ Future<DateTime?> pickDate(BuildContext context, DateTime initial) {
       ),
     ),
   );
+}
+
+
+/// Standard UI motion: 240 ms, or none when the system asks for reduced motion.
+Duration motion(BuildContext context) =>
+    MediaQuery.of(context).disableAnimations ? Duration.zero : const Duration(milliseconds: 240);
+
+/// Cross-fades (with a slight lift) whenever [switchKey] changes: day, filter, segment or tab content.
+class SmoothSwitch extends StatelessWidget {
+  final Object? switchKey;
+  final Widget child;
+  const SmoothSwitch({super.key, required this.switchKey, required this.child});
+
+  @override
+  Widget build(BuildContext context) => AnimatedSwitcher(
+        duration: motion(context),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        layoutBuilder: (current, previous) => Stack(alignment: Alignment.topCenter, children: [...previous, ?current]),
+        transitionBuilder: (child, animation) => FadeTransition(
+          opacity: animation,
+          child: SlideTransition(
+            position: Tween(begin: const Offset(0, 0.02), end: Offset.zero).animate(animation),
+            child: child,
+          ),
+        ),
+        child: KeyedSubtree(key: ValueKey(switchKey), child: child),
+      );
 }
