@@ -17,3 +17,4 @@ mobile/android/.gradle/
 mobile/android/local.properties
 !mobile/release/app-release.apk
 !COVERAGE.json
+!COVERAGE_DAY2.json

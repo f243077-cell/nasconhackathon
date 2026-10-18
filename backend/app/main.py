@@ -5,11 +5,13 @@ import uuid
 
 import redis.asyncio as aioredis
 from fastapi import FastAPI, Request
+from fastapi.responses import Response
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import config
 from .errors import ApiError, error_response
+from .services.bus import qr_cache_key
 from .routes import api_v1, audit, audit_day2, audit_day2_social, rbac, ws
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -66,6 +68,20 @@ def _guest_write_blocked(scope) -> str | None:
     return _guest_token(scope) if guarded else None
 
 
+async def _qr_inspect_cache_hit(scope) -> bytes | None:
+    """Fast path for GET /audit/v1/qr/{id}?inspect=true (the k6 guest-viewer load): a cached view is returned
+    before routing. The cache is filled by the route and invalidated on every scan and match event."""
+    if scope.get("method") != "GET" or b"inspect=true" not in scope.get("query_string", b""):
+        return None
+    path = scope.get("path", "")
+    if not path.startswith("/audit/v1/qr/") or "/" in path[len("/audit/v1/qr/"):]:
+        return None
+    try:
+        return await _redis().get(qr_cache_key(path[len("/audit/v1/qr/"):]))
+    except Exception:  # noqa: BLE001
+        return None
+
+
 class BodyLimitAndRateLimit:
     """Pure ASGI middleware: 413 before anything else, then /api/v1/* rate limiting."""
 
@@ -84,6 +100,9 @@ class BodyLimitAndRateLimit:
                 if size > config.MAX_BODY_BYTES:
                     resp = error_response(413, "PAYLOAD_TOO_LARGE", "Request body exceeds 1 MB")
                     return await resp(scope, receive, send)
+        hit = await _qr_inspect_cache_hit(scope)
+        if hit is not None:
+            return await Response(content=hit, media_type="application/json")(scope, receive, send)
         guest = _guest_write_blocked(scope)
         if guest:
             resp = error_response(403, "GUEST_WRITE_FORBIDDEN", "Anonymous guest tokens cannot perform write mutations.",

@@ -1,9 +1,13 @@
 """Part II autograder interface (spec II 5): stream keys, QR, short links, metrics, privacy, media auth hook."""
 import json
 
+import redis.asyncio as aioredis
+from starlette.concurrency import run_in_threadpool
+
 from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import RedirectResponse, Response
 
+from .. import config
 from ..db import tx
 from ..errors import ApiError, validation_error
 from ..repo import day2 as day2_repo
@@ -50,9 +54,37 @@ async def media_auth(request: Request):
     return Response(status_code=401)
 
 
+_aredis = None
+
+
+def _cache():
+    global _aredis
+    if _aredis is None:
+        _aredis = aioredis.from_url(config.REDIS_URL, socket_timeout=1, socket_connect_timeout=1)
+    return _aredis
+
+
 @router.get("/audit/v1/qr/{entity_id}")
-def qr_resolve(entity_id: str, inspect: bool = False, user_agent: str | None = Header(default=None)):
-    return respond(200, run_tx(day2_repo.qr_resolve, entity_id, inspect, user_agent))
+async def qr_resolve(entity_id: str, inspect: bool = False, user_agent: str | None = Header(default=None)):
+    """Read-only inspections (the k6 guest-viewer load, NFR-2) are served from a short Redis cache that is
+    invalidated on every scan and every match event, so the route and scan count stay exact."""
+    key = bus.qr_cache_key(entity_id)
+    if inspect:
+        try:
+            hit = await _cache().get(key)
+            if hit:
+                return Response(content=hit, media_type="application/json")
+        except Exception:  # noqa: BLE001  cache is optional
+            pass
+    resp = await run_in_threadpool(run_tx, day2_repo.qr_resolve, entity_id, inspect, user_agent)
+    try:
+        if inspect:
+            await _cache().set(key, json.dumps(resp, ensure_ascii=False, separators=(",", ":")), px=1500)
+        else:
+            await _cache().delete(key)
+    except Exception:  # noqa: BLE001
+        pass
+    return respond(200, resp)
 
 
 @router.get("/audit/v1/qr/{entity_id}/export.{fmt}")

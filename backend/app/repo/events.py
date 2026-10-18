@@ -110,6 +110,7 @@ def append_event(conn, body, allow_internal: bool = False) -> tuple[int, dict]:
     bus.publish_realtime(msg_type, match_id, {"event_id": body["event_id"], "type": etype, "version": sequence,
                                               "status": proj["status"], "home_score": proj["home"]["score"],
                                               "away_score": proj["away"]["score"]})
+    bus.invalidate_qr(match_id)
     return 201, resp
 
 

@@ -29,3 +29,14 @@ def publish_realtime(msg_type: str, match_id: str | None, data: dict) -> None:
         client().publish(config.REALTIME_CHANNEL, json.dumps({"type": msg_type, "match_id": match_id, "data": data}))
     except Exception as exc:  # noqa: BLE001
         log.warning("realtime %s not published: %s", msg_type, exc)
+
+
+def qr_cache_key(entity_id: str) -> str:
+    return f"qr:view:{entity_id}"
+
+
+def invalidate_qr(entity_id: str) -> None:
+    try:
+        client().delete(qr_cache_key(entity_id))
+    except Exception as exc:  # noqa: BLE001
+        log.warning("qr cache invalidation for %s failed: %s", entity_id, exc)
