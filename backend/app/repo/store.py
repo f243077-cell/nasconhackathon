@@ -5,7 +5,7 @@ import json
 from ..canonical import canonical, sign
 from ..domain import store as store_domain
 from ..errors import ApiError, validation_error
-from ..services import bus, payments, receipts
+from ..services import notifier, bus, payments, receipts
 from ..validate import now_iso
 
 
@@ -145,6 +145,10 @@ def transition_order(conn, order_id: str, body) -> dict:
                                                    "refund_id": refund_id, "at": now})
     view = order_view(conn, order_id)
     view["refund_id"] = refund_id
+    # FR-5.2: push the transition to WebSocket/SSE subscribers; failed delivery retries, then goes to the DLQ.
+    view["notification"] = notifier.dispatch(
+        conn, "order_status", row["customer_id"] or order_id,
+        {"order_id": order_id, "from": current, "to": target, "at": now}, simulate_dlq=body.get("simulate_dlq") is True)
     return view
 
 

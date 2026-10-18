@@ -199,6 +199,48 @@ def athletes():
     check("athletes: all unfollowed -> count 0, no drift", b.get("follower_count") == 0 and b.get("following") is False, b)
 
 
+def host_controls():
+    """FR-3.3 host controls + FR-5.2 invite delivery with DLQ fallback + member stream key."""
+    s, b = call("POST", "/api/v1/auth/login", {"email": "player@nascon.test", "password": "Nascon@26"})
+    host = b.get("token") if s == 200 else None
+    s, b = call("POST", "/api/v1/auth/login", {"email": "manager@nascon.test", "password": "Nascon@26"})
+    other = b.get("token") if s == 200 else None
+    check("controls: logins", host and other, (host, other))
+    s, b = call("POST", "/api/v1/costream/sessions", {"session_id": "cs-ctl-1", "host_player_id": "player-alpha-1",
+                                                      "participants": ["player-alpha-1", "player-alpha-2"]}, token=host)
+    check("controls: host creates session 201", s == 201 and b.get("active_host") == "player-alpha-1", (s, b))
+    s, b = call("POST", "/api/v1/costream/sessions/cs-ctl-1/invite", {"player_id": "player-beta-2"}, token=host)
+    check("controls: signed invite 201 + delivered", s == 201 and str(b.get("invite_token", "")).startswith("inv.")
+          and b.get("notification", {}).get("delivered") is True, (s, b))
+    s, b = call("POST", "/api/v1/costream/sessions/cs-ctl-1/join", {"invite_token": b.get("invite_token")}, token=host)
+    check("controls: invite is bound to its player (host can't use it)", s == 403 and err((s, b)) == "FORBIDDEN", (s, b))
+    depth0 = call("POST", "/audit/v1/moderation/test", {"chat_room_id": "r", "incoming_messages": []})[1]["dlq_status"]["queue_depth"]
+    s, b = call("POST", "/api/v1/costream/sessions/cs-ctl-1/invite", {"player_id": "player-beta-1", "simulate_dlq": True},
+                token=host)
+    depth1 = call("POST", "/audit/v1/moderation/test", {"chat_room_id": "r", "incoming_messages": []})[1]["dlq_status"]["queue_depth"]
+    check("controls: failed invite delivery -> 3 attempts -> DLQ +1", s == 201 and b["notification"] == {
+        "delivered": False, "attempts": 3} and depth1 == depth0 + 1, (b, depth0, depth1))
+    r = call("POST", "/api/v1/costream/sessions/cs-ctl-1/mute", {"player_id": "player-alpha-2"}, token=other)
+    check("controls: non-host mute -> 403", r[0] == 403, r)
+    s, b = call("POST", "/api/v1/costream/sessions/cs-ctl-1/mute", {"player_id": "player-alpha-2"}, token=host)
+    check("controls: mute", s == 200 and b.get("muted") == ["player-alpha-2"], (s, b))
+    s, b = call("POST", "/api/v1/costream/sessions/cs-ctl-1/spotlight", {"player_id": "player-alpha-2"}, token=host)
+    check("controls: spotlight", s == 200 and b.get("spotlight") == "player-alpha-2" and b.get("layout") == "spotlight", b)
+    s, b = call("POST", "/api/v1/costream/sessions/cs-ctl-1/kick", {"player_id": "player-alpha-2"}, token=host)
+    check("controls: kick", s == 200 and b.get("active_participants") == ["player-alpha-1"] and b.get("muted") == [], b)
+    r = call("POST", "/api/v1/costream/sessions/cs-ctl-1/kick", {"player_id": "player-alpha-2"}, token=host)
+    check("controls: kicked player gone -> 404", r[0] == 404 and err(r) == "PLAYER_NOT_FOUND", r)
+    s, b = call("POST", "/api/v1/costream/sessions/cs-ctl-1/leave", token=host)
+    check("controls: last host leaves -> terminated", s == 200 and b.get("status") == "terminated", b)
+    s, b = call("GET", "/api/v1/costream/sessions/cs-ctl-1")
+    check("controls: guest can view session", s == 200 and b.get("chat_room_id") == "chat-cs-ctl-1", (s, b))
+    r = call("POST", "/api/v1/costream/sessions/cs-ctl-1/mute", {"player_id": "x"}, token="guest_anon_tok_7721")
+    check("controls: guest write -> 403 GUEST_WRITE_FORBIDDEN", err(r) == "GUEST_WRITE_FORBIDDEN", r)
+    s, b = call("POST", "/api/v1/stream/key", {"action": "generate", "player_id": "player-beta-1"}, token=host)
+    check("stream key: member gets their own key", s == 201 and b.get("player_id") == "player-alpha-1"
+          and b.get("signature"), (s, b))
+
+
 def main():
     if not SALT:
         print("Set DAY2_SALT to the stack's salt to check signatures.")
@@ -208,6 +250,7 @@ def main():
     cart()
     moderation()
     athletes()
+    host_controls()
     print(f"\n{len(FAILS)} failed" if FAILS else "\nALL PASS")
     sys.exit(1 if FAILS else 0)
 

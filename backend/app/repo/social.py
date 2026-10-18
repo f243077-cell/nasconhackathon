@@ -3,7 +3,8 @@ Rules live in domain/costream.py, domain/guest_cart.py and domain/moderation.py;
 import json
 
 from .. import config
-from ..services import bus
+from ..errors import ApiError
+from ..services import bus, notifier
 from ..canonical import canonical, sign_day2
 from ..domain import costream as costream_domain
 from ..domain import guest_cart as cart_domain
@@ -38,10 +39,73 @@ def costream_session(conn, body) -> tuple[int, dict]:
         return 200, json.loads(row["response"])
     resp["signature"] = sign_day2(sid, costream_domain.sig_payload(resp))
     bus.invalidate_qr(sid)
-    conn.execute("INSERT INTO costream_sessions (session_id, request, response) VALUES (%s, %s, %s) "
-                 "ON CONFLICT (session_id) DO UPDATE SET request = EXCLUDED.request, response = EXCLUDED.response",
-                 (sid, key, json.dumps(resp)))
+    state = costream_domain.state_from_response(resp)
+    conn.execute("INSERT INTO costream_sessions (session_id, request, response, state) VALUES (%s, %s, %s, %s) "
+                 "ON CONFLICT (session_id) DO UPDATE SET request = EXCLUDED.request, response = EXCLUDED.response, "
+                 "state = EXCLUDED.state", (sid, key, json.dumps(resp), json.dumps(state)))
     return 201, resp
+
+
+# ------------------------------------------------------------------ live co-stream host controls (FR-3.3)
+def load_session(conn, session_id: str, lock: bool = False) -> dict:
+    row = conn.execute("SELECT response, state FROM costream_sessions WHERE session_id = %s"
+                       + (" FOR UPDATE" if lock else ""), (session_id,)).fetchone()
+    if row is None:
+        raise ApiError(404, "STREAM_NOT_FOUND", "Co-stream not found", {"session_id": session_id})
+    if row["state"]:
+        return json.loads(row["state"])
+    return costream_domain.state_from_response(json.loads(row["response"]))
+
+
+def save_session(conn, state: dict) -> dict:
+    conn.execute("UPDATE costream_sessions SET state = %s WHERE session_id = %s",
+                 (json.dumps(state), state["session_id"]))
+    view = costream_domain.view(state, media_base=MEDIA_HLS_BASE)
+    bus.publish_realtime("costream_update", None, view)
+    bus.invalidate_qr(state["session_id"])
+    return view
+
+
+def session_view(conn, session_id: str) -> dict:
+    return costream_domain.view(load_session(conn, session_id), media_base=MEDIA_HLS_BASE)
+
+
+def host_control(conn, session_id: str, actor: str | None, action: str, target) -> dict:
+    state = load_session(conn, session_id, lock=True)
+    return save_session(conn, costream_domain.apply_control(state, actor, action, target))
+
+
+def host_drop(conn, session_id: str, actor: str | None) -> dict:
+    """The host leaves (or their connection drops): hand off in array order, or end the session."""
+    state = load_session(conn, session_id, lock=True)
+    if actor != state["host"]:
+        raise ApiError(403, "FORBIDDEN", "Only the host can leave as host", {"session_id": session_id})
+    return save_session(conn, costream_domain.host_drop(state))
+
+
+def invite(conn, session_id: str, actor: str | None, player_id, simulate_dlq: bool, now: int) -> dict:
+    state = load_session(conn, session_id)
+    if state["status"] != "active":
+        raise ApiError(404, "STREAM_NOT_FOUND", "This co-stream has ended", {"session_id": session_id})
+    if actor != state["host"]:
+        raise ApiError(403, "FORBIDDEN", "Only the host can invite", {"session_id": session_id})
+    if not isinstance(player_id, str) or not player_id:
+        raise ApiError(400, "VALIDATION_ERROR", "player_id is required", {"fields": ["player_id"]})
+    if not _player_exists(conn, player_id):
+        raise ApiError(404, "PLAYER_NOT_FOUND", "Player not found", {"player_id": player_id})
+    payload = costream_domain.invite_payload(session_id, player_id, now)
+    token = costream_domain.make_invite(payload, sign_day2)
+    sent = notifier.dispatch(conn, "costream_invite", player_id,
+                             {"session_id": session_id, "invite_token": token, "from": actor},
+                             simulate_dlq=simulate_dlq)
+    return {"session_id": session_id, "player_id": player_id, "invite_token": token, "expires_at": payload["exp"],
+            "notification": sent}
+
+
+def join(conn, session_id: str, player_id: str | None, token, now: int) -> dict:
+    payload = costream_domain.read_invite(token, sign_day2, now)
+    state = load_session(conn, session_id, lock=True)
+    return save_session(conn, costream_domain.join(state, player_id, payload))
 
 
 # ------------------------------------------------------------------ guest cart merge (5.7)

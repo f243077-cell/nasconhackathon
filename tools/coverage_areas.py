@@ -21,7 +21,7 @@ AREAS_DAY2 = {
     "streaming": ["app/domain/streaming.py"],
     "costream": ["app/domain/costream.py"],
     "qr_guest": ["app/domain/qr.py", "app/domain/guest_cart.py"],
-    "moderation_dlq": ["app/domain/moderation.py", "app/domain/notify.py"],
+    "moderation_dlq": ["app/domain/moderation.py", "app/domain/notify.py", "app/services/notifier.py"],
     "observability": ["app/services/metrics.py"],
 }
 

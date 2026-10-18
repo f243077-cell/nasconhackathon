@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS sync_actions (device_id TEXT NOT NULL, action_id TEXT
 CREATE TABLE IF NOT EXISTS stream_keys (stream_key TEXT PRIMARY KEY, player_id TEXT NOT NULL, label TEXT NOT NULL,
   status TEXT NOT NULL, created_at TEXT NOT NULL, seq BIGSERIAL);
 CREATE TABLE IF NOT EXISTS costream_sessions (session_id TEXT PRIMARY KEY, request TEXT NOT NULL, response TEXT NOT NULL);
+ALTER TABLE costream_sessions ADD COLUMN IF NOT EXISTS state TEXT;
 CREATE TABLE IF NOT EXISTS qr_codes (entity_id TEXT PRIMARY KEY, short_code TEXT UNIQUE NOT NULL,
   scan_count BIGINT NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS qr_scans (entity_id TEXT NOT NULL, device_family TEXT NOT NULL, hour_bucket TEXT NOT NULL,
