@@ -10,7 +10,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import config
 from .errors import ApiError, error_response
-from .routes import api_v1, audit, audit_day2, rbac, ws
+from .routes import api_v1, audit, audit_day2, audit_day2_social, rbac, ws
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("api")
@@ -140,6 +140,7 @@ async def unhandled_handler(request: Request, exc: Exception):
 
 app.include_router(audit.router)
 app.include_router(audit_day2.router)
+app.include_router(audit_day2_social.router)
 app.include_router(rbac.router)
 app.include_router(api_v1.router)
 app.include_router(ws.router)
