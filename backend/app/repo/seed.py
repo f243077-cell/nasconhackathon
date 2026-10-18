@@ -7,7 +7,7 @@ from pathlib import Path
 from ..canonical import canonical
 from ..db import ALL_TABLES
 from ..errors import validation_error
-from ..validate import is_int
+from ..validate import is_int, now_iso
 from . import events as events_repo
 from . import leagues as leagues_repo
 from . import roster as roster_repo
@@ -75,8 +75,9 @@ def seed_day2(conn) -> None:
         conn.execute("INSERT INTO qr_codes (entity_id, short_code, scan_count) VALUES (%s, %s, 0)",
                      (q["entity_id"], q["short_code"]))
     for g in DAY2["guest_tokens"]:
+        # issued at reset time: guest tokens are short-lived (FR-4.2), the TTL counts from here
         conn.execute("INSERT INTO guest_tokens (guest_token, status, created_at) VALUES (%s, 'active', %s)",
-                     (g, "2026-10-18T00:00:00Z"))
+                     (g, now_iso()))
 
 
 def reset(conn, body=None) -> dict:

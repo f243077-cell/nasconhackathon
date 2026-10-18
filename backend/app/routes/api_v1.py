@@ -444,3 +444,29 @@ def merge_guest_cart(body=Depends(json_body), p: dict = Depends(principal)):
            "guest_cart": body.get("items"), "test_write_block": False}
     status, resp = run_tx(social_repo.cart_merge, req)
     return respond(status, resp)
+
+
+@router.get("/vods/{vod_id}/media")
+def vod_media(vod_id: int):
+    """FR-3.2: play an indexed VOD straight from MinIO (public, like the live stream)."""
+    from fastapi.responses import StreamingResponse
+
+    from ..services import vod_store
+    with tx() as conn:
+        row = conn.execute("SELECT recording_path FROM vods WHERE vod_id = %s", (vod_id,)).fetchone()
+    if row is None:
+        raise ApiError(404, "VOD_NOT_FOUND", "Recording not found", {"vod_id": vod_id})
+    try:
+        obj = vod_store.open_stream(row["recording_path"])
+    except Exception:  # noqa: BLE001 - object missing or MinIO down
+        obj = None
+    if obj is None:
+        raise ApiError(404, "VOD_NOT_FOUND", "Recording not available", {"vod_id": vod_id})
+
+    def chunks():
+        try:
+            yield from obj.stream(64 * 1024)
+        finally:
+            obj.close()
+            obj.release_conn()
+    return StreamingResponse(chunks(), media_type="video/mp4")

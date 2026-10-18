@@ -53,6 +53,7 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
       MINIO_BUCKET: ${MINIO_BUCKET:-receipts}
       WEB_CONCURRENCY: ${WEB_CONCURRENCY:-4}
+      GUEST_TOKEN_TTL_S: ${GUEST_TOKEN_TTL_S:-14400}
     depends_on:
       postgres:
         condition: service_healthy

@@ -15,6 +15,9 @@ MINIO_ENDPOINT = os.environ.get("MINIO_ENDPOINT", "minio:9000")
 MINIO_ACCESS_KEY = os.environ.get("MINIO_ROOT_USER", "minioadmin")
 MINIO_SECRET_KEY = os.environ.get("MINIO_ROOT_PASSWORD", "minioadmin123")
 MINIO_BUCKET = os.environ.get("MINIO_BUCKET", "receipts")
+VOD_BUCKET = os.environ.get("VOD_BUCKET", "vods")
+# FR-4.2: anonymous guest tokens are short-lived (default 4 h, longer than any seeded match).
+GUEST_TOKEN_TTL_S = int(os.environ.get("GUEST_TOKEN_TTL_S", "14400"))
 
 MAX_BODY_BYTES = 1024 * 1024
 RATE_LIMIT_MAX = 100

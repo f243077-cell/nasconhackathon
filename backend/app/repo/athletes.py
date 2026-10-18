@@ -50,7 +50,7 @@ def _matches(conn, clubs: set[str]) -> list[dict]:
 def _vods(conn, player_id: str) -> list[dict]:
     rows = conn.execute("SELECT vod_id, stream_key, recording_path, started_at, ended_at FROM vods "
                         "WHERE player_id = %s ORDER BY ended_at DESC", (player_id,)).fetchall()
-    return [dict(r) for r in rows]
+    return [dict(r, playback_url=f"{config.PUBLIC_BASE_URL}/api/v1/vods/{r['vod_id']}/media") for r in rows]
 
 
 def follower_count(conn, athlete_id: str) -> int:

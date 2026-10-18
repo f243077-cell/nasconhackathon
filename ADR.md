@@ -159,6 +159,7 @@
 - `authMethod: http` points at `POST /internal/media/auth`. Only an active, non-revoked key may publish on `live/<key>`.
 - A revoke or rotate commits first, then calls the MediaMTX control API (`/v3/.../kick/{id}`) to drop the publisher.
 - Every path records to the shared `recordings` volume. The MediaMTX image has no shell or curl, so the worker watches that volume instead of a `runOnRecordSegmentComplete` hook. A segment idle for 3 s is uploaded to the MinIO `vods` bucket and indexed with `repo/athletes.index_recording`.
+- The VOD row stores the `s3://vods/live/<key>/<segment>` URI, and `GET /api/v1/vods/{vod_id}/media` streams it back from MinIO.
 
 **Consequences**
 - One small container covers all three protocols, and the image is pinned and already pulled.
@@ -210,6 +211,7 @@
 - A pure-ASGI check in `main.py` runs before routing, validation and the rate limiter. Any `POST/PUT/PATCH/DELETE` with a `Bearer guest_*` token is rejected with 403 `GUEST_WRITE_FORBIDDEN` and `details.guest_token`.
 - It covers all of `/api/v1/*` (except `/api/v1/guest/*`, which issues tokens) and the audit writes `/audit/v1/checkout`, `/audit/v1/events`, `/audit/v1/roster/transfer` and `/audit/v1/offline-sync`.
 - Read routes the Guest Web Player needs (`GET /api/v1/matches/{id}`, `/athletes/{id}`, `/chat`) accept a guest or no bearer.
+- Guest tokens are short-lived: `GUEST_TOKEN_TTL_S` (default 4 h) from the issue time, which `POST /api/v1/guest/token` returns as `expires_at`. An expired or privacy-wiped token can't start a new cart merge (409 `GUEST_TOKEN_EXPIRED`); an identical replay still returns the merged cart. The seeded `guest_anon_tok_7721` is issued at reset time.
 
 **Consequences**
 - A new write route is guarded automatically. Nobody can forget the check on one handler.

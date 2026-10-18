@@ -195,10 +195,13 @@ def post_chat(conn, principal: dict, body) -> dict:
 def issue_guest_token(conn) -> dict:
     """Short-lived anonymous viewer token (FR-4.2): read-only playback, live score, guest cart staging."""
     import secrets
+    from ..domain import guest_cart as guest_cart_domain
     token = "guest_anon_tok_" + secrets.token_hex(8)
+    created = now_iso()
     conn.execute("INSERT INTO guest_tokens (guest_token, status, created_at) VALUES (%s, 'active', %s)",
-                 (token, now_iso()))
-    return {"guest_token": token, "role": "guest", "read_only": True}
+                 (token, created))
+    return {"guest_token": token, "role": "guest", "read_only": True, "expires_in": config.GUEST_TOKEN_TTL_S,
+            "expires_at": guest_cart_domain.token_expires_at(created, config.GUEST_TOKEN_TTL_S)}
 
 
 def chat_history(conn, room: str, limit: int = 100) -> dict:

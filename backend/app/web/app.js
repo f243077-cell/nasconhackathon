@@ -65,10 +65,12 @@
   let guestToken = store.get("nascon.guest_token");
 
   async function ensureGuestToken() {
-    if (guestToken) return guestToken;
+    // FR-4.2: guest tokens are short-lived; fetch a new one once the stored one has expired.
+    const exp = store.get("nascon.guest_token_exp");
+    if (guestToken && !(exp && Date.parse(exp) <= Date.now())) return guestToken;
     const r = await http("POST", "/api/v1/guest/token", { body: { entity_id: entityId } });
     const tok = r.ok && r.data && (r.data.guest_token || r.data.token);
-    if (tok) { guestToken = tok; store.set("nascon.guest_token", tok); }
+    if (tok) { guestToken = tok; store.set("nascon.guest_token", tok); store.set("nascon.guest_token_exp", r.data.expires_at || null); }
     return guestToken;
   }
   const readToken = () => memberToken || guestToken;

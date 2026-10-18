@@ -1,5 +1,6 @@
 """Internal queue consumer: reads structured domain events from the Redis stream (FR-2.3).
-Also indexes finished MediaMTX recordings: upload to MinIO, then repo/athletes.index_recording (FR-3.2 VOD)."""
+Also indexes finished MediaMTX recordings: upload to MinIO, then repo/athletes.index_recording with the
+s3://vods/... URI, so the VOD row points at the object store (FR-3.2)."""
 import json
 import logging
 import os
@@ -15,7 +16,6 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s worker
 log = logging.getLogger("worker")
 GROUP = "workers"
 RECORDINGS = os.environ.get("RECORDINGS_DIR", "/recordings")
-VOD_BUCKET = os.environ.get("VOD_BUCKET", "vods")
 # MediaMTX's image has no shell or curl for runOnRecordSegmentComplete, so the worker watches the shared volume.
 # A segment is complete once it has not been written for SEGMENT_IDLE_S (stream ended or segment rolled).
 SEGMENT_IDLE_S = 3.0
@@ -42,22 +42,16 @@ def finished_segments(root: str, now: float, seen: set[str]) -> list[tuple[str, 
 
 
 def vod_indexer() -> None:
-    from minio import Minio
-
     from .db import tx
     from .repo import athletes as athletes_repo
-    client = Minio(config.MINIO_ENDPOINT, access_key=config.MINIO_ACCESS_KEY, secret_key=config.MINIO_SECRET_KEY,
-                   secure=False)
+    from .services import vod_store
     seen: set[str] = set()
     while True:
         try:
             for path, seg, st in finished_segments(RECORDINGS, time.time(), seen):
-                if not client.bucket_exists(VOD_BUCKET):
-                    client.make_bucket(VOD_BUCKET)
-                client.fput_object(VOD_BUCKET, os.path.relpath(seg, RECORDINGS).replace(os.sep, "/"), seg,
-                                   content_type="video/mp4")
+                uri = vod_store.upload(seg, os.path.relpath(seg, RECORDINGS).replace(os.sep, "/"))
                 with tx() as conn:
-                    vod = athletes_repo.index_recording(conn, path, seg, _iso(st.st_ctime), _iso(st.st_mtime))
+                    vod = athletes_repo.index_recording(conn, path, uri, _iso(st.st_ctime), _iso(st.st_mtime))
                 seen.add(seg)
                 log.info("vod %s -> %s", seg, vod and vod.get("vod_id"))
         except Exception as exc:  # noqa: BLE001 - keep indexing after a transient MinIO/DB error

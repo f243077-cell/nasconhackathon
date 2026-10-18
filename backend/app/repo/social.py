@@ -138,10 +138,12 @@ def cart_merge(conn, body) -> tuple[int, dict]:
     tok = req["guest_token"]
     conn.execute("INSERT INTO guest_tokens (guest_token, status, created_at) VALUES (%s, 'active', %s) "
                  "ON CONFLICT (guest_token) DO NOTHING", (tok, now_iso()))
-    row = conn.execute("SELECT merge_request, merge_response FROM guest_tokens WHERE guest_token = %s FOR UPDATE",
+    row = conn.execute("SELECT status, created_at, merge_request, merge_response FROM guest_tokens "
+                       "WHERE guest_token = %s FOR UPDATE",
                        (tok,)).fetchone()
     if cart_domain.replay_decision(req, row["merge_request"]) == "replay":
         return 200, json.loads(row["merge_response"])
+    cart_domain.check_token_usable(tok, row["status"], row["created_at"], now_iso(), config.GUEST_TOKEN_TTL_S)
 
     user = req["registered_user_id"]
     existing = [{"variant_id": r["variant_id"], "quantity": r["quantity"]} for r in conn.execute(

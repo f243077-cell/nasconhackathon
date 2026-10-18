@@ -3,6 +3,7 @@
 The route (Tanzeel) locks the guest token row FOR UPDATE, then calls, in order:
 validate_request -> check_existence -> replay_decision -> merge_items (409 OUT_OF_STOCK) -> build_response.
 """
+from datetime import datetime, timedelta, timezone
 from typing import Callable
 
 from ..canonical import canonical
@@ -22,6 +23,24 @@ def is_guest_token(token) -> bool:
 
 def guest_write_forbidden(token: str) -> ApiError:
     return ApiError(403, "GUEST_WRITE_FORBIDDEN", "Guests can't do that. Sign in to continue.", {"guest_token": token})
+
+
+def _parse_ts(ts: str) -> datetime:
+    dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def token_expires_at(created_at: str, ttl_s: int) -> str:
+    """When a guest token issued at `created_at` stops being usable (FR-4.2 short-lived)."""
+    return (_parse_ts(created_at) + timedelta(seconds=ttl_s)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def check_token_usable(token: str, status: str, created_at: str, now: str, ttl_s: int) -> None:
+    """A wiped (privacy-erased) or expired guest token can't stage a new merge -> 409 GUEST_TOKEN_EXPIRED.
+    Identical replays are decided before this check, so a merged cart is still returned after expiry."""
+    if status == "wiped" or _parse_ts(now) >= _parse_ts(created_at) + timedelta(seconds=ttl_s):
+        raise ApiError(409, "GUEST_TOKEN_EXPIRED", "This guest session has expired. Start a new one.",
+                       {"guest_token": token, "expired_at": token_expires_at(created_at, ttl_s)})
 
 
 def validate_request(body) -> dict:
