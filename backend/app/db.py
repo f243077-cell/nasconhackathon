@@ -65,6 +65,11 @@ CREATE TABLE IF NOT EXISTS chat_messages (chat_room_id TEXT NOT NULL, seq BIGINT
   sender TEXT NOT NULL, text TEXT NOT NULL, flagged BOOLEAN NOT NULL, reason TEXT, created_at TEXT NOT NULL,
   PRIMARY KEY (chat_room_id, seq));
 CREATE TABLE IF NOT EXISTS dlq (id BIGSERIAL PRIMARY KEY, event TEXT NOT NULL, attempts INT NOT NULL, created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS follows (follower_id TEXT NOT NULL, athlete_id TEXT NOT NULL, created_at TEXT NOT NULL,
+  PRIMARY KEY (follower_id, athlete_id));
+CREATE INDEX IF NOT EXISTS follows_athlete ON follows (athlete_id);
+CREATE TABLE IF NOT EXISTS vods (vod_id BIGSERIAL PRIMARY KEY, stream_key TEXT NOT NULL, player_id TEXT NOT NULL,
+  recording_path TEXT UNIQUE NOT NULL, started_at TEXT, ended_at TEXT NOT NULL);
 """
 
 ALL_TABLES = [
@@ -72,7 +77,7 @@ ALL_TABLES = [
     "variants", "price_schedule", "inventory", "discount_codes", "orders", "order_status_log", "roster_state",
     "roster_index", "roster_requests", "sync_actions",
     "stream_keys", "costream_sessions", "qr_codes", "qr_scans", "guest_tokens", "carts", "guest_carts",
-    "moderation_actions", "chat_messages", "dlq",
+    "moderation_actions", "chat_messages", "dlq", "follows", "vods",
 ]
 
 

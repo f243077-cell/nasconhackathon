@@ -163,6 +163,42 @@ def moderation():
     check("moderation: bad body 400", r[0] == 400 and err(r) == "VALIDATION_ERROR", r)
 
 
+def athletes():
+    """FR-3.1: profile, idempotent follow, zero follower-count drift under concurrent toggles."""
+    tokens = {}
+    for who in ("viewer", "manager", "organizer", "player"):
+        s, b = call("POST", "/api/v1/auth/login", {"email": f"{who}@nascon.test", "password": "Nascon@26"})
+        tokens[who] = b.get("token") if s == 200 else None
+    check("athletes: demo logins", all(tokens.values()), tokens)
+    target = "player-alpha-2"
+    s, b = call("GET", f"/api/v1/athletes/{target}", token=tokens["viewer"])
+    check("athletes: profile 200", s == 200 and b.get("athlete_id") == target and "career" in b
+          and "upcoming_fixtures" in b and "affiliations" in b and b.get("follower_count") == 0, (s, b))
+    s, b = call("GET", f"/api/v1/athletes/{target}")
+    check("athletes: guest can read a profile", s == 200 and b.get("following") is None, (s, b))
+    r = call("POST", f"/api/v1/athletes/{target}/follow", token="guest_anon_tok_7721")
+    check("athletes: guest follow -> 403 GUEST_WRITE_FORBIDDEN", r[0] == 403 and err(r) == "GUEST_WRITE_FORBIDDEN", r)
+    r = call("GET", "/api/v1/athletes/player-ghost", token=tokens["viewer"])
+    check("athletes: unknown -> 404", r[0] == 404 and err(r) == "PLAYER_NOT_FOUND", r)
+    r = call("POST", "/api/v1/athletes/player-alpha-1/follow", token=tokens["player"])
+    check("athletes: self-follow -> 400", r[0] == 400 and err(r) == "VALIDATION_ERROR", r)
+
+    # 10 simultaneous follows by one user -> exactly 1 follower; 10 unfollows -> 0.
+    res = concurrently(10, lambda: call("POST", f"/api/v1/athletes/{target}/follow", token=tokens["viewer"]))
+    check("athletes: 10 concurrent follows -> all 200", all(r[0] == 200 for r in res), [r[0] for r in res])
+    s, b = call("GET", f"/api/v1/athletes/{target}", token=tokens["viewer"])
+    check("athletes: count 1 after duplicate follows", b.get("follower_count") == 1 and b.get("following") is True, b)
+    # 4 users toggling at once: everyone follows, then everyone unfollows.
+    who = list(tokens)
+    concurrently(4, lambda i=iter(who): call("POST", f"/api/v1/athletes/{target}/follow", token=tokens[next(i)]))
+    s, b = call("GET", f"/api/v1/athletes/{target}", token=tokens["viewer"])
+    check("athletes: 4 users -> count 4", b.get("follower_count") == 4, b.get("follower_count"))
+    concurrently(10, lambda: call("DELETE", f"/api/v1/athletes/{target}/follow", token=tokens["viewer"]))
+    concurrently(3, lambda i=iter(who[1:]): call("DELETE", f"/api/v1/athletes/{target}/follow", token=tokens[next(i)]))
+    s, b = call("GET", f"/api/v1/athletes/{target}", token=tokens["viewer"])
+    check("athletes: all unfollowed -> count 0, no drift", b.get("follower_count") == 0 and b.get("following") is False, b)
+
+
 def main():
     if not SALT:
         print("Set DAY2_SALT to the stack's salt to check signatures.")
@@ -171,6 +207,7 @@ def main():
     costream()
     cart()
     moderation()
+    athletes()
     print(f"\n{len(FAILS)} failed" if FAILS else "\nALL PASS")
     sys.exit(1 if FAILS else 0)
 
