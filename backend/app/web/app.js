@@ -225,8 +225,62 @@
   // ---------- video ----------
   const video = $("video");
   let hls = null;
+  // Low latency first: WebRTC (WHEP) from MediaMTX, < 0.5 s glass-to-glass. HLS is the fallback while no
+  // publisher is live; WHEP is retried every 4 s so a host's camera appears without a reload.
+  const whepUrlFor = (hlsUrl) => hlsUrl.replace(/:8888\//, ":8889/").replace(/\/index\.m3u8$/, "/whep");
+  let pc = null;
+  let whepRetry = null;
+  async function playWhep(url) {
+    const conn = new RTCPeerConnection({ iceServers: [] });
+    conn.addTransceiver("video", { direction: "recvonly" });
+    conn.addTransceiver("audio", { direction: "recvonly" });
+    const stream = new MediaStream();
+    conn.ontrack = (e) => {
+      stream.addTrack(e.track);
+      if (video.srcObject !== stream) {
+        if (hls) { hls.destroy(); hls = null; }
+        video.removeAttribute("src");
+        video.srcObject = stream;
+        video.play().catch(() => {});
+      }
+      $("player-empty").hidden = true;
+    };
+    conn.onconnectionstatechange = () => {
+      if (["failed", "disconnected", "closed"].includes(conn.connectionState) && pc === conn) {
+        pc = null; scheduleWhep(url);
+      }
+    };
+    await conn.setLocalDescription(await conn.createOffer());
+    await new Promise((res) => {           // gather candidates (non-trickle), at most 1.5 s
+      if (conn.iceGatheringState === "complete") return res();
+      const t = setTimeout(res, 1500);
+      conn.onicegatheringstatechange = () => { if (conn.iceGatheringState === "complete") { clearTimeout(t); res(); } };
+    });
+    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/sdp" }, body: conn.localDescription.sdp });
+    if (!res.ok) { conn.close(); throw new Error(`WHEP ${res.status}`); }
+    await conn.setRemoteDescription({ type: "answer", sdp: await res.text() });
+    if (pc) pc.close();
+    pc = conn;
+  }
+  function scheduleWhep(url) {
+    clearTimeout(whepRetry);
+    whepRetry = setTimeout(() => playWhep(url).catch(() => scheduleWhep(url)), 4000);
+  }
+
   function playStream(url) {
     if (!url) return;
+    if (window.RTCPeerConnection && /:8888\/.+\/index\.m3u8$/.test(url)) {
+      const whep = whepUrlFor(url);
+      const fallback = () => { if (!video.srcObject) { if (pc) { pc.close(); pc = null; } if (!hls && !video.src) playHls(url); } scheduleWhep(whep); };
+      // Signalling can succeed while the media path is blocked (UDP/TCP 8189 on venue Wi-Fi): if no track
+      // arrives within 5 s, play HLS so the viewer always sees video, and keep retrying WebRTC.
+      playWhep(whep).then(() => setTimeout(() => { if (!video.srcObject) fallback(); }, 5000)).catch(fallback);
+      return;
+    }
+    playHls(url);
+  }
+
+  function playHls(url) {
     const empty = $("player-empty");
     const ready = () => { empty.hidden = true; };
     if (video.canPlayType("application/vnd.apple.mpegurl")) {
